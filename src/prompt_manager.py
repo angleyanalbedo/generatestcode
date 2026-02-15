@@ -37,6 +37,8 @@ class PromptManager:
 
         selected_strategy = random.choice(strategies)
         return Template(selected_strategy).render(task=base_task)
+        return [{"role": "user",
+                "content": f"{Template(selected_strategy).render(task=base_task)}\nOutput ONLY the new task description string."}]
 
     def get_generation_messages(self, task, golden_example=None):
         """组装完整的请求 Messages"""

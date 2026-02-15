@@ -4,8 +4,7 @@ import os
 import random
 import asyncio
 import platform
-from configmanager import ConfigManager
-from prompt_manager import PromptManager
+from src.prompt_manager import PromptManager
 # 尝试导入异步文件库，如果没有安装则回退到同步（建议 pip install aiofiles）
 try:
     import aiofiles
@@ -127,12 +126,11 @@ class AsyncSTDistillationEngine:
     # --- 核心逻辑 (异步化) ---
 
     async def generate_task_ideas_async(self, topic, count=10):
-        prompt = self.prompts.get_brainstorm_messages(topic, count)
         try:
             # await 异步调用
             response = await self.aclient.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=self.prompts.get_brainstorm_messages(topic, count),
                 temperature=0.9
             )
             content = self.clean_json_content(response.choices[0].message.content)
@@ -146,15 +144,10 @@ class AsyncSTDistillationEngine:
     async def evolve_task_async(self, base_task):
         """异步进化任务"""
         if random.random() > 0.7: return base_task
-
-        # 它会在内部随机选择策略并渲染
-        strategies = self.prompts.get_evolution_prompt(base_task)
-
         try:
             response = await self.aclient.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "user",
-                           "content": f"{random.choice(strategies)}\nOutput ONLY the new task description string."}],
+                messages=self.prompts.get_evolution_prompt(base_task),
                 temperature=0.8
             )
             return response.choices[0].message.content.strip()
@@ -163,11 +156,10 @@ class AsyncSTDistillationEngine:
 
     async def ai_critique_async(self, task, code):
         """异步 AI 审查"""
-        prompt = self.prompts.get_critique_messages(task, code)
         try:
             response = await self.aclient.chat.completions.create(
                 model=MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=self.prompts.get_critique_messages(task, code),
                 temperature=0.1
             )
             content = self.clean_json_content(response.choices[0].message.content)
@@ -193,13 +185,7 @@ class AsyncSTDistillationEngine:
                     if len(ex_code) < 1500:
                         example_text = f"\n[Reference Example]\nTask: {ex_task}\nCode:\n{ex_code}\n------------------\n"
 
-            strict_rules = self.prompts.get_generation_messages(task, golden_example=golden_data)
-            messages = [
-                {"role": "system",
-                 "content": f"You are an expert IEC 61131-3 PLC programmer.{strict_rules}{example_text}"},
-                {"role": "user",
-                 "content": f"Task: Write a FUNCTION_BLOCK for: \"{task}\".\nRequirements: Strictly IEC 61131-3 ST syntax. Use ':=' for assignment.\nOutput: JSON ONLY (keys: thought, code)."}
-            ]
+            messages = self.prompts.get_generation_messages(task, golden_example=self.golden_examples)
 
             rejected_attempts = []
 
