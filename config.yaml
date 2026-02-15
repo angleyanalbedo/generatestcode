@@ -1,15 +1,19 @@
-project:
-  name: "st-coder-v1"
-  output_file: "data/output.jsonl"
-  dpo_file: "data/dpo.jsonl"
-  history_file: "data/history.jsonl"
-  golden_file: "config/golden_prompts.json"
+# config.yaml
 
+# 1. 生成参数 (你提供的部分)
 generation:
-  model: "industrial-coder"
-  base_url: "http://localhost:8000/v1"
-  max_concurrency: 100
-  max_retries: 3
+  model: "industrial-coder"          # 模型名称 (vLLM 启动参数 --served-model-name)
+  base_url: "http://localhost:8000/v1" # vLLM 本地推理地址
+  max_concurrency: 100               # 🔥 核心参数：根据你的显存大小调整 (24G显存建议 20-50, 80G显存可开 100+)
+  max_retries: 3                     # 单个任务失败重试次数
 
-golden_memory:
-  max_examples: 50
+# 2. 文件路径 (建议也配置在这里)
+file_paths:
+  output_file: "data/st_dataset_local.jsonl"
+  dpo_file: "data/st_dpo_dataset.jsonl"
+  golden_file: "data/golden_prompts.json"
+  history_file: "data/history.jsonl"
+
+# 3. 任务目标
+project:
+  target_count: 200000               # 目标生成总数
