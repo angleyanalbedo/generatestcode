@@ -3,4 +3,7 @@ name = "stcodegenerate"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "aiofiles>=25.1.0",
+    "openai>=2.21.0",
+]
