@@ -18,8 +18,8 @@ except ImportError:
 from openai import AsyncOpenAI
 
 # 假设这些是你已经定义的外部类
-from src.prompt_manager import PromptManager
-from src.config_manager import ConfigManager
+from src.distillation.prompt_manager import PromptManager
+from src.distillation.config_manager import ConfigManager
 
 # 配置日志
 logging.basicConfig(

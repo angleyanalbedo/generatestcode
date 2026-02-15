@@ -1,7 +1,7 @@
 import asyncio
-from src.distillation_engine import AsyncSTDistillationEngine
-from src.prompt_manager import PromptManager
-from src.config_manager import ConfigManager
+from src.distillation.distillation_engine import AsyncSTDistillationEngine
+from src.distillation.prompt_manager import PromptManager
+from src.distillation.config_manager import ConfigManager
 import platform
 
 
