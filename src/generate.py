@@ -38,6 +38,8 @@ class AsyncSTDistillationEngine:
     def __init__(self):
         # 1. 初始化异步客户端
         self.aclient = AsyncOpenAI(api_key=API_KEYS[0], base_url=BASE_URL)
+        # 初始化 Prompt 工具
+        self.prompts = PromptManager(prompt_config)
 
         # 2. 异步锁和信号量
         self.file_lock = asyncio.Lock()
@@ -125,13 +127,7 @@ class AsyncSTDistillationEngine:
     # --- 核心逻辑 (异步化) ---
 
     async def generate_task_ideas_async(self, topic, count=10):
-        prompt = f"""
-You are an expert industrial automation engineer.
-Brainstorm {count} DISTINCT, SPECIFIC, and INTERMEDIATE-LEVEL IEC 61131-3 Structured Text (ST) programming tasks related to: "{topic}".
-Rules:
-1. Cover real-world scenarios.
-2. Output ONLY a JSON list of strings.
-"""
+        prompt = self.prompts.get_brainstorm_messages(topic, count)
         try:
             # await 异步调用
             response = await self.aclient.chat.completions.create(
@@ -151,12 +147,8 @@ Rules:
         """异步进化任务"""
         if random.random() > 0.7: return base_task
 
-        strategies = [
-            f"Add a complex constraint: The system must handle asynchronous sensor signal jitter. Task: {base_task}",
-            f"Rewrite to include a secondary objective: logging critical data to a buffer. Task: {base_task}",
-            f"Make specific to Pharmaceutical industry (GAMP5 standards), ensuring data integrity. Task: {base_task}",
-            f"Increase reasoning complexity: Implement using a robust State Machine. Task: {base_task}"
-        ]
+        # 它会在内部随机选择策略并渲染
+        strategies = self.prompts.get_evolution_prompt(base_task)
 
         try:
             response = await self.aclient.chat.completions.create(
@@ -171,17 +163,7 @@ Rules:
 
     async def ai_critique_async(self, task, code):
         """异步 AI 审查"""
-        prompt = f"""
-You are a Senior PLC Code Reviewer. Review this IEC 61131-3 Structured Text code.
-Task: {task}
-Code:
-{code}
-Checklist:
-1. Is the logic actually solving the task?
-2. Are all used variables declared in VAR?
-3. Is it safe (no infinite loops)?
-Output JSON ONLY: {{"passed": boolean, "reason": "short explanation"}}
-"""
+        prompt = self.prompts.get_critique_messages(task, code)
         try:
             response = await self.aclient.chat.completions.create(
                 model=MODEL,
@@ -211,13 +193,7 @@ Output JSON ONLY: {{"passed": boolean, "reason": "short explanation"}}
                     if len(ex_code) < 1500:
                         example_text = f"\n[Reference Example]\nTask: {ex_task}\nCode:\n{ex_code}\n------------------\n"
 
-            strict_rules = """
-STRICT CODING STANDARDS:
-1. FLOAT SAFETY: Use epsilon (ABS(A-B)<0.001).
-2. MATH SAFETY: Check division by zero.
-3. COMPATIBILITY: Do NOT use dynamic arrays. Use fixed-size arrays.
-4. FORMAT: Use 'FUNCTION_BLOCK', 'VAR', 'END_VAR'.
-"""
+            strict_rules = self.prompts.get_generation_messages(task, golden_example=golden_data)
             messages = [
                 {"role": "system",
                  "content": f"You are an expert IEC 61131-3 PLC programmer.{strict_rules}{example_text}"},
