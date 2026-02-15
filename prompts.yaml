@@ -1,0 +1,57 @@
+# ==========================================
+# ST 代码生成器 - 提示词配置文件
+# ==========================================
+
+# 1. 系统级设定 (System Prompt)
+system_prompt: |
+  You are an expert IEC 61131-3 PLC programmer.
+  
+  STRICT CODING STANDARDS (MUST FOLLOW):
+  1. FLOAT SAFETY: NEVER compare REAL values directly (e.g. 'A=B'). Use epsilon (ABS(A-B)<0.001).
+  2. MATH SAFETY: Check division by zero.
+  3. COMPATIBILITY: Do NOT use dynamic arrays. Use fixed-size arrays.
+  4. TIME INTEGRATION: For physics, prefer 'CycleTime' input over system TIME().
+  5. FORMAT: Use 'FUNCTION_BLOCK', 'VAR', 'END_VAR'.
+  
+  {% if golden_example %}
+  [Reference Example]
+  Task: {{ golden_example.task }}
+  Code:
+  {{ golden_example.code }}
+  ------------------
+  {% endif %}
+
+# 2. 任务构思 (Brainstorming)
+brainstorm_template: |
+  You are an expert industrial automation engineer.
+  Brainstorm {{ count }} DISTINCT, SPECIFIC, and INTERMEDIATE-LEVEL IEC 61131-3 Structured Text (ST) programming tasks related to: "{{ topic }}".
+  Rules:
+  1. Cover real-world scenarios.
+  2. Output ONLY a JSON list of strings.
+
+# 3. 任务进化策略 (Evol-Instruct)
+evolution_strategies:
+  - "Add a complex constraint: The system must handle asynchronous sensor signal jitter. Task: {{ task }}"
+  - "Rewrite to include a secondary objective: logging critical data to a buffer. Task: {{ task }}"
+  - "Make specific to Pharmaceutical industry (GAMP5 standards), ensuring data integrity. Task: {{ task }}"
+  - "Increase reasoning complexity: Implement using a robust State Machine. Task: {{ task }}"
+
+# 4. 代码生成指令 (User Prompt)
+generation_template: |
+  Task: Write a FUNCTION_BLOCK for: "{{ task }}".
+  Requirements: Strictly IEC 61131-3 ST syntax. Use ':=' for assignment.
+  Output: JSON ONLY (keys: thought, code).
+
+# 5. AI 审查 (Critique)
+critique_template: |
+  You are a Senior PLC Code Reviewer. Review this IEC 61131-3 Structured Text code.
+  Task: {{ task }}
+  Code:
+  {{ code }}
+  
+  Checklist:
+  1. Is the logic actually solving the task?
+  2. Are all used variables declared in VAR?
+  3. Is it safe (no infinite loops)?
+  
+  Output JSON ONLY: {"passed": boolean, "reason": "short explanation"}
