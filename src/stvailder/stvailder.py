@@ -1,5 +1,5 @@
 import re
-
+from src.stparser.st_parser import STParser
 
 # --- 校验器 ---
 
@@ -22,6 +22,7 @@ class STValidator:
             "VAR_INPUT": "END_VAR",
             "VAR_OUTPUT": "END_VAR"
         }
+        self.parser = STParser()
 
     def _extract_declared_vars(self, code):
         """提取 VAR 块中定义的所有变量名"""
@@ -74,3 +75,23 @@ class STValidator:
             pass
 
         return True, "Passed All Strict Checks"
+
+    def validate_v2(self, code: str) -> tuple[bool, str]:
+        # 1. 语法检查
+        tree = self.parser.parse(code)
+        if isinstance(tree, tuple):
+            return False, f"Syntax Error: {tree[1]}"
+
+        # 2. 语义检查 (利用结构化数据)
+        struct = self.parser.get_structure(code)
+
+        # 检查变量：正文里用的变量，VAR 里有吗？
+        declared_vars = set()
+        for block in struct['variables']:
+            for d in block['decls']:
+                declared_vars.add(d['name'])
+
+        # 简单的正文搜索检查（可以进一步递归分析 body）
+        # ... 逻辑 ...
+
+        return True, "Passed"
