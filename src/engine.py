@@ -279,7 +279,7 @@ class AsyncSTDistillationEngine:
                         break  # 其他错误直接退出本次任务
             return None
 
-    async def main_loop(self):
+    async def run(self):
         print(f"🚀 Async Engine Started | Max Concurrency: {MAX_CONCURRENCY}")
 
         domains = ["Motion Control", "Closed Loop Control", "Safety Logic", "Data Processing", "Communication"]
