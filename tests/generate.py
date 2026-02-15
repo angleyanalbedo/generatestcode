@@ -21,10 +21,10 @@ API_KEYS = ["local-vllm-no-key"]
 BASE_URL = "http://localhost:8000/v1"
 MODEL = "industrial-coder"
 
-OUTPUT_FILE = "st_dataset_local_part.jsonl"
+OUTPUT_FILE = "../st_dataset_local_part.jsonl"
 DPO_FILE = "st_dpo_dataset.jsonl"
 HISTORY_FILE = "st_dataset_r1.jsonl"
-GOLDEN_FILE = "golden_prompts.json"
+GOLDEN_FILE = "../golden_prompts.json"
 
 TARGET_TOTAL_COUNT = 200000
 MAX_CONCURRENCY = 100  # 🔥 控制并发量 (替代 MAX_WORKERS)
@@ -38,7 +38,7 @@ class AsyncSTDistillationEngine:
     def __init__(self):
         # 1. 初始化异步客户端
         self.aclient = AsyncOpenAI(api_key=API_KEYS[0], base_url=BASE_URL)
-        self.prompts = PromptManager(config_path="prompts.yaml")
+        self.prompts = PromptManager(config_path="../prompts.yaml")
 
         # 2. 异步锁和信号量
         self.file_lock = asyncio.Lock()
