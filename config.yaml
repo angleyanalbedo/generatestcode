@@ -1,0 +1,15 @@
+project:
+  name: "st-coder-v1"
+  output_file: "data/output.jsonl"
+  dpo_file: "data/dpo.jsonl"
+  history_file: "data/history.jsonl"
+  golden_file: "config/golden_prompts.json"
+
+generation:
+  model: "industrial-coder"
+  base_url: "http://localhost:8000/v1"
+  max_concurrency: 100
+  max_retries: 3
+
+golden_memory:
+  max_examples: 50

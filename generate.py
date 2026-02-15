@@ -4,7 +4,8 @@ import os
 import random
 import asyncio
 import platform
-
+from configmanager import ConfigManager
+from prompt_manager import PromptManager
 # 尝试导入异步文件库，如果没有安装则回退到同步（建议 pip install aiofiles）
 try:
     import aiofiles
@@ -38,8 +39,7 @@ class AsyncSTDistillationEngine:
     def __init__(self):
         # 1. 初始化异步客户端
         self.aclient = AsyncOpenAI(api_key=API_KEYS[0], base_url=BASE_URL)
-        # 初始化 Prompt 工具
-        self.prompts = PromptManager(prompt_config)
+        self.prompts = PromptManager(config_path="prompts.yaml")
 
         # 2. 异步锁和信号量
         self.file_lock = asyncio.Lock()
