@@ -27,6 +27,16 @@ class ConfigManager:
     @property
     def max_concurrency(self):
         return self.cfg['generation']['max_concurrency']
+    @property
+    def output_file(self):
+        return self.cfg['generation']['output_file']
+    @property
+    def dpo_file(self):
+        return self.cfg['generation']['dpo_file']
+    @property
+    def gloden_file(self):
+        return self.cfg['generation']['gloden_file']
+
 
     # ... 其他属性封装 ...
     def get_path(self, key):

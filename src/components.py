@@ -4,6 +4,8 @@ import yaml
 import aiofiles
 from openai import AsyncOpenAI
 from jinja2 import Template
+import asyncio
+import os
 
 
 # --- 配置管理 ---
@@ -59,13 +61,6 @@ class STValidator:
 
 
 # --- 存储管理 ---
-import os
-import json
-import asyncio
-import aiofiles
-from typing import List, Dict, Optional
-
-
 class DataManager:
     """
     数据持久化层：负责所有文件 IO、去重逻辑和样本库维护。
@@ -126,7 +121,7 @@ class DataManager:
         formatted_task = task  # 或者加上前缀 f"Write ST code for: {task}"
         return formatted_task in self.existing_tasks
 
-    async def get_random_golden_examples(self, count: int = 1) -> List[Dict]:
+    async def get_random_golden_examples(self, count: int = 1) -> list[dict]:
         """随机获取 N 个优质样本用于 Few-Shot"""
         import random
         async with self.golden_lock:
