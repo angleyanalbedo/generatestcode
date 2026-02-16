@@ -1,7 +1,3 @@
-这份 `README.md` 已经非常接近成熟的开源项目标准了。针对你即将开展的 **代码重构生成 (STRewriter)** 和 **代码切片/分析 (STSlicer)** 计划，我们在文档中新增一个 `🗺️ 路线图 (Roadmap)` 或 `📅 TODO` 章节，这能让项目的工程化愿景显得更加宏大。
-
-以下是为你更新后的 `README.md` 全文：
-
 ---
 
 # Industrial-ST-Distiller 🚀
