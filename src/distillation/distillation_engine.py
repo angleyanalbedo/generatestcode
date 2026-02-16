@@ -181,6 +181,8 @@ class AsyncSTDistillationEngine:
         cleaned = re.sub(r"```json|```", "", raw_text, flags=re.IGNORECASE).strip()
         start, end = cleaned.find('{'), cleaned.rfind('}')
         if start != -1 and end != -1: return cleaned[start:end + 1]
+        start_list, end_list = cleaned.find('['), cleaned.rfind(']')
+        if start_list != -1 and end_list != -1: return cleaned[start_list:end_list + 1]
         return ""
 
     def _validate_st_syntax(self, code: str) -> tuple[bool, str]:
