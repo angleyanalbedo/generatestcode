@@ -1,5 +1,3 @@
----
-
 # Industrial-ST-Distiller 🚀
 
 **Industrial-ST-Distiller** 是一个专为工业自动化领域设计的合成数据生成与蒸馏框架。它利用大语言模型（LLM）的高级推理能力，自动化地生成、进化并校验 IEC 61131-3 标准下的 **结构化文本 (ST)** 代码。
