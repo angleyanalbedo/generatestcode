@@ -76,22 +76,55 @@ class STValidator:
 
         return True, "Passed All Strict Checks"
 
+    def _extract_used_vars(self, body_element) -> set:
+        """递归提取语句中使用的所有变量名"""
+        used = set()
+        if isinstance(body_element, list):
+            for item in body_element:
+                used.update(self._extract_used_vars(item))
+        elif isinstance(body_element, dict):
+            # 如果是赋值语句，target 和 expr 里的变量都要抓
+            if body_element.get("type") == "assignment":
+                used.add(body_element["target"])
+                # 这里简单处理，实际 expr 可能是复杂的树，需进一步递归
+                if isinstance(body_element["expr"], str):
+                    used.add(body_element["expr"])
+            # 如果是 IF/CASE 等结构，递归其 body 部分
+            if "body" in body_element:
+                used.update(self._extract_used_vars(body_element["body"]))
+        return used
+
     def validate_v2(self, code: str) -> tuple[bool, str]:
-        # 1. 语法检查
+        # 1. 语法校验 (Syntax Check)
+        # 如果 Lark 报错，直接打回
         tree = self.parser.parse(code)
-        if isinstance(tree, tuple):
+        if isinstance(tree, tuple):  # 假设 parse 返回 (None, err_msg)
             return False, f"Syntax Error: {tree[1]}"
 
-        # 2. 语义检查 (利用结构化数据)
-        struct = self.parser.get_structure(code)
+        # 2. 获取结构化数据 (Semantic Analysis)
+        try:
+            struct = self.parser.get_structure(code)
+        except Exception as e:
+            return False, f"Analysis Error: {str(e)}"
 
-        # 检查变量：正文里用的变量，VAR 里有吗？
+        # 3. 语义校验：变量对齐
+        # A. 收集所有声明的变量
         declared_vars = set()
-        for block in struct['variables']:
-            for d in block['decls']:
-                declared_vars.add(d['name'])
+        for block in struct.get('var_blocks', []):
+            for v in block['vars']:
+                declared_vars.add(v['name'])
 
-        # 简单的正文搜索检查（可以进一步递归分析 body）
-        # ... 逻辑 ...
+        # B. 递归收集正文中使用的标识符
+        used_vars = self._extract_used_vars(struct.get('body', []))
+
+        # C. 过滤掉系统关键字和常量数字
+        # 简单逻辑：如果标识符全是数字，忽略
+        used_vars = {v for v in used_vars if not v.isdigit()}
+
+        # D. 求差集：找出未定义的变量
+        undefined = used_vars - declared_vars
+
+        if undefined:
+            return False, f"Semantic Error: Undefined variables used: {', '.join(undefined)}"
 
         return True, "Passed"

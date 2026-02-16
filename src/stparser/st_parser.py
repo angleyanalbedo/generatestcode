@@ -102,28 +102,43 @@ class STSemanticAnalyzer(Transformer):
     2. 代码重构生成
     """
 
-    def fb_decl(self, items):
+    @v_args(inline=True)
+    def IDENT(self, token):
+        return str(token)
+
+    @v_args(inline=True)
+    def TYPE(self, token):
+        return str(token)
+
+    def var_decl(self, items):
+        # 返回单个变量定义对象
         return {
-            "type": "FUNCTION_BLOCK",
-            "name": str(items[0]),
-            "variables": items[1:-1],
-            "body": items[-1]
+            "name": items[0],
+            "type": items[1],
+            "init": items[2] if len(items) > 2 else None
         }
 
     def var_block(self, items):
-        return {"block_type": str(items[0]), "decls": items[1:]}
-
-    def var_decl(self, items):
+        # 区分 VAR_INPUT, VAR_OUTPUT 等
         return {
-            "name": str(items[0]),
-            "data_type": str(items[1]),
-            "init_value": str(items[2]) if len(items) > 2 else None
+            "kind": str(items[0]),
+            "vars": items[1:]
         }
 
-    def body(self, items):
-        return items  # 返回语句列表
+    def fb_decl(self, items):
+        # items: [Name, VarBlock1, VarBlock2..., Body]
+        name = items[0]
+        body = items[-1]
+        var_blocks = items[1:-1]
+        return {
+            "unit_type": "FUNCTION_BLOCK",
+            "name": name,
+            "var_blocks": var_blocks,
+            "body": body
+        }
 
     def assign_stmt(self, items):
-        return {"type": "assignment", "target": str(items[0]), "expr": items[1]}
+        return {"type": "assignment", "target": items[0], "expr": items[1]}
 
-    # 更多转换方法可以根据需要添加...
+    def body(self, items):
+        return items  # 语句列表
