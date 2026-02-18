@@ -174,6 +174,46 @@ class STParser:
         return set()
 
 
+class STUnparser:
+    """将结构化字典还原为 IEC 61131-3 文本"""
+
+    def unparse(self, node, indent=0) -> str:
+        if not node: return ""
+        spacing = "    " * indent
+
+        if isinstance(node, list):
+            return "".join([self.unparse(item, indent) for item in node])
+
+        ntype = node.get("type")
+
+        if ntype == "if_statement":
+            code = f"{spacing}IF {self._expr(node['condition'])} THEN\n"
+            code += self.unparse(node['then_branch'], indent + 1)
+            if node.get("else_branch"):
+                code += f"{spacing}ELSE\n"
+                code += self.unparse(node['else_branch'], indent + 1)
+            code += f"{spacing}END_IF;\n"
+            return code
+
+        if ntype == "assignment":
+            return f"{spacing}{node['target']} := {self._expr(node['expr'])};\n"
+
+        return ""
+
+    def _expr(self, expr) -> str:
+        """递归处理表达式"""
+        if isinstance(expr, str): return expr
+        if not isinstance(expr, dict): return str(expr)
+
+        etype = expr.get("type")
+        if etype == "variable": return expr["name"]
+        if etype == "literal": return str(expr["value"])
+        if etype == "binary_op":
+            return f"({self._expr(expr['left'])} {expr['op']} {self._expr(expr['right'])})"
+        if etype == "unary_op":
+            return f"{expr['op']}({self._expr(expr['operand'])})"
+        return ""
+
 class STSemanticAnalyzer(Transformer):
     """
     将 Lark Tree 转换为结构化字典，用于后续的：
