@@ -67,13 +67,36 @@ class STRewriter(Transformer):
 
     def body(self, items):
         """
-        4. 语句乱序（仅限无依赖的语句）
-        注意：这需要配合你的 STSlicer 检查数据依赖，这里仅示意
+        Lark Transformer 钩子：处理语句列表。
+        在这里实现基于依赖分析的“指令重排”。
         """
-        # 如果两条连续赋值语句互不引用，可以交换顺序
-        return items
+        # 如果 body 里只有 0 或 1 条语句，没法重排
+        if len(items) < 2:
+            return items
 
-# 使用方法
-# tree = parser.parse(original_code)
-# new_tree = STRewriter().transform(tree)
-# new_code = new_tree.pretty() # Lark 提供的漂亮格式化输出
+        new_items = list(items)
+        # 我们进行多次随机交换尝试
+        for _ in range(len(new_items)):
+            # 随机选择两个相邻的索引
+            i = random.randint(0, len(new_items) - 2)
+            stmt_a = new_items[i]
+            stmt_b = new_items[i+1]
+
+            # --- 核心依赖检查 ---
+            # 1. 提取读写集合
+            r_a, w_a = self.analyzer.get_read_vars(stmt_a), self.analyzer.get_write_vars(stmt_a)
+            r_b, w_b = self.analyzer.get_read_vars(stmt_b), self.analyzer.get_write_vars(stmt_b)
+
+            # 2. 判断是否存在冲突 (Data Hazard)
+            # RAW (Read After Write): A 写 B 读
+            # WAR (Write After Read): A 读 B 写
+            # WAW (Write After Write): A 写 B 写
+            has_dependency = (w_a & r_b) or (r_a & w_b) or (w_a & w_b)
+
+            if not has_dependency:
+                # 如果没有依赖，50% 概率交换顺序
+                if random.random() > 0.5:
+                    new_items[i], new_items[i+1] = new_items[i+1], new_items[i]
+
+        return new_items
+
