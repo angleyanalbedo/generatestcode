@@ -94,6 +94,85 @@ class STParser:
         analyzer = STSemanticAnalyzer()
         return analyzer.transform(tree)
 
+    def get_read_vars(self, node: Any) -> set:
+        """
+        递归获取一个 AST 节点中所有‘读’（被引用）的变量名。
+        用于构建数据依赖图（DDG）。
+        """
+        if not node:
+            return set()
+
+        # 处理列表（通常是语句列表 body）
+        if isinstance(node, list):
+            res = set()
+            for x in node:
+                res |= self.get_read_vars(x)
+            return res
+
+        # 如果是基础类型（比如直接解析出的字符串或数字），不涉及变量读取
+        if not isinstance(node, dict):
+            return set()
+
+        ntype = node.get("type")
+        res = set()
+
+        # 1. 基础表达式
+        if ntype == "variable":
+            res.add(node["name"])
+
+        elif ntype == "binary_op":
+            res |= self.get_read_vars(node["left"])
+            res |= self.get_read_vars(node["right"])
+
+        elif ntype == "unary_op":
+            res |= self.get_read_vars(node["operand"])
+
+        # 2. 赋值语句 (LHS 是写，RHS 是读)
+        elif ntype == "assignment":
+            res |= self.get_read_vars(node["expr"])
+            # 注意：如果存在数组下标访问如 A[i] := 10，则 i 也是被‘读’的
+            if isinstance(node.get("target_metadata"), dict):  # 预留给未来数组/结构体处理
+                res |= self.get_read_vars(node["target_metadata"])
+
+        # 3. 控制流结构 (Condition 部分是读)
+        elif ntype == "if_statement":
+            res |= self.get_read_vars(node["condition"])
+            res |= self.get_read_vars(node["then_branch"])
+            if node.get("else_branch"):
+                res |= self.get_read_vars(node["else_branch"])
+            # 如果你处理了 ELSIF，也需要在这里递归
+
+        elif ntype == "case_statement":
+            res |= self.get_read_vars(node["expression"])  # CASE x OF 中的 x
+            for selection in node.get("selections", []):
+                res |= self.get_read_vars(selection["body"])
+            if node.get("else_branch"):
+                res |= self.get_read_vars(node["else_branch"])
+
+        elif ntype == "for_loop":
+            # 循环的边界值和步长都是读
+            res |= self.get_read_vars(node["from"])
+            res |= self.get_read_vars(node["to"])
+            res |= self.get_read_vars(node["step"])
+            res |= self.get_read_vars(node["body"])
+
+        elif ntype == "while_loop":
+            res |= self.get_read_vars(node["condition"])
+            res |= self.get_read_vars(node["body"])
+
+        # 4. 函数调用 (所有参数都是读)
+        elif ntype == "func_call":
+            for arg in node.get("arg_list", []):
+                res |= self.get_read_vars(arg)
+
+        return res
+
+    def get_write_vars(self, node: Any) -> set:
+        """获取一个节点中所有‘写’的变量"""
+        if isinstance(node, dict) and node.get("type") == "assignment":
+            return {node["target"]}
+        return set()
+
 
 class STSemanticAnalyzer(Transformer):
     """
@@ -109,6 +188,47 @@ class STSemanticAnalyzer(Transformer):
     @v_args(inline=True)
     def TYPE(self, token):
         return str(token)
+
+    # 在 STSemanticAnalyzer 类中添加这些方法
+
+    @v_args(inline=True)
+    def num(self, token):
+        return {"type": "literal", "value": str(token)}
+
+    @v_args(inline=True)
+    def var(self, token):
+        return {"type": "variable", "name": str(token)}
+
+    def not_op(self, items):
+        return {"type": "unary_op", "op": "NOT", "operand": items[0]}
+
+    def add(self, items): return self._bin_op("+", items)
+
+    def sub(self, items): return self._bin_op("-", items)
+
+    def mul(self, items): return self._bin_op("*", items)
+
+    def div(self, items): return self._bin_op("/", items)
+
+    def gt(self, items):  return self._bin_op(">", items)
+
+    def lt(self, items):  return self._bin_op("<", items)
+
+    def eq(self, items):  return self._bin_op("=", items)
+
+    def ne(self, items):  return self._bin_op("<>", items)
+
+    def and_op(self, items): return self._bin_op("AND", items)
+
+    def or_op(self, items):  return self._bin_op("OR", items)
+
+    def _bin_op(self, op, items):
+        return {
+            "type": "binary_op",
+            "op": op,
+            "left": items[0],
+            "right": items[1]
+        }
 
     def var_decl(self, items):
         # 返回单个变量定义对象
