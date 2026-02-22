@@ -48,16 +48,19 @@ class ConfigManager:
 
     @property
     def output_path(self) -> str:
-        return self._cfg.get('file_paths', {}).get('output_path', 'st_dataset_local_part.jsonl')
+        return self._cfg.get('file_paths', {}).get('output_path', 'data/st_dataset_local_part.jsonl')
     @property
     def dpo_file(self) -> str:
-        return self._cfg.get('file_paths', {}).get('dpo_file', 'st_dpo_dataset.jsonl')
+        return self._cfg.get('file_paths', {}).get('dpo_file', 'data/st_dpo_dataset.jsonl')
     @property
     def golden_file(self) -> str:
-        return self._cfg.get('file_paths', {}).get('golden_file', 'st_golden_dataset.json')
+        return self._cfg.get('file_paths', {}).get('golden_file', 'data/st_golden_dataset.json')
     @property
     def history_file(self) -> str:
-        return self._cfg.get('file_paths', {}).get('history_file', 'st_history_dataset.json')
+        return self._cfg.get('file_paths', {}).get('history_file', 'data/st_history_dataset.json')
     @property
     def failed_file(self) -> str:
-        return self._cfg.get('file_paths', {}).get('failed_file', 'st_failed_dataset.json')
+        return self._cfg.get('file_paths', {}).get('failed_file', 'data/data/failed_tasks.jsonl')
+    @property
+    def error_log_file(self) -> str:
+        return self._cfg.get('file_paths', {}).get('error_log_file', 'data/error_records.jsonl')
