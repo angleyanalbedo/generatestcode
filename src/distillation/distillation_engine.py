@@ -121,12 +121,22 @@ class IOHandler:
         """保存成功数据"""
         await self._write_line(self.output_file, data)
 
-    async def save_failed_record(self, data):
+    async def save_failed_record(self, data: dict):
         """
-        专门记录那些最终没跑通的代码，用于后续的人工回溯或作为 DPO 的‘极差’样本。
+        记录系统性崩溃。
+        用于：分析为什么 Engine 会崩（比如 JSON 解析失败、网络中断）。
         """
-        async with aiofiles.open(self.cfg.failed_file, "a", encoding="utf-8") as f:
-            await f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "task_context": data.get("task"),
+            "error_type": data.get("type", "exception_failure"),
+            "error_detail": data.get("error"),
+            "last_code_snippet": data.get("code")  # 崩溃前拿到的代码，防止丢失
+        }
+        error_path = self.cfg.file_paths.get("error_log_file", "data/error_records.jsonl")
+
+        async with aiofiles.open(error_path, "a", encoding="utf-8") as f:
+            await f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     async def save_failed_task(self, data: dict):
         """
@@ -331,7 +341,10 @@ class AsyncSTDistillationEngine:
                     is_valid, error_msg = self._validate_st_syntax(code)
 
                     if not is_valid:
-                        rejected_history.append(code)
+                        rejected_history.append({
+                            "code": code,
+                            "error": error_msg if not is_valid else review.get('reason')
+                        })
                         messages.append({"role": "assistant", "content": code})
                         messages.append({"role": "user", "content": f"Syntax Error: {error_msg}. Fix it."})
                         continue
@@ -376,7 +389,6 @@ class AsyncSTDistillationEngine:
                             "code": code,
                             "error": error_msg if not is_valid else review.get('reason')
                         })
-                        rejected_history.append(code)
                         messages.append({"role": "assistant", "content": code})
                         messages.append({"role": "user", "content": f"Logic Error: {review['reason']}. Fix it."})
 
