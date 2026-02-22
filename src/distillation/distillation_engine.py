@@ -20,6 +20,7 @@ from openai import AsyncOpenAI
 # 假设这些是你已经定义的外部类
 from src.distillation.prompt_manager import PromptManager
 from src.distillation.config_manager import ConfigManager
+from src.stvailder.stvailder import STValidator
 
 # 配置日志
 logging.basicConfig(
@@ -165,6 +166,7 @@ class AsyncSTDistillationEngine:
         self.prompts = prompts
         self.task_queue = asyncio.Queue(maxsize=500)
 
+        self.validator = STValidator()
         # 1. 组合：实例化 IO 处理器
         self.io = IOHandler(config)
 
@@ -186,15 +188,9 @@ class AsyncSTDistillationEngine:
         return ""
 
     def _validate_st_syntax(self, code: str) -> tuple[bool, str]:
-        """静态代码分析 (这块逻辑很简单，直接放 Engine 里即可，没必要单独拆类)"""
-        if re.search(r"\b\w+\s*=\s*\w+;", code):
-            return False, "Illegal assignment operator '=' found. Use ':='."
-        required_keywords = ["FUNCTION_BLOCK", "END_FUNCTION_BLOCK", "VAR", "END_VAR"]
-        if not all(k in code for k in required_keywords):
-            return False, "Missing required structure keywords (FUNCTION_BLOCK, VAR...)."
-        if "ARRAY[*]" in code.upper() or "ARRAY [*]" in code.upper():
-            return False, "Dynamic arrays 'ARRAY[*]' are not supported."
-        return True, "Passed"
+        """改为使用lark写的vailder"""
+        return self.validator.validate_v2(code)
+
 
     # --- LLM 交互步骤 ---
 
@@ -356,6 +352,8 @@ class AsyncSTDistillationEngine:
                         await asyncio.sleep(wait_time)
                     elif attempt == self.cfg.max_retries - 1:
                         logger.error(f"❌ Task failed: {str(e)[:50]}")
+                    else:
+                        logger.error(e.__str__())
 
     async def run(self):
         """主调度循环"""

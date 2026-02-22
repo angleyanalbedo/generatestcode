@@ -1,1 +1,1 @@
-from .stvailder import STVailder
+from .stvailder import STValidator

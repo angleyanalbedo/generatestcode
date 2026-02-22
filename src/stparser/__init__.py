@@ -1,1 +1,1 @@
-from st_parser import STParser
+from .st_parser import STParser
