@@ -60,7 +60,7 @@ class ConfigManager:
         return self._cfg.get('file_paths', {}).get('history_file', 'data/st_history_dataset.json')
     @property
     def failed_file(self) -> str:
-        return self._cfg.get('file_paths', {}).get('failed_file', 'data/data/failed_tasks.jsonl')
+        return self._cfg.get('file_paths', {}).get('failed_file', 'data/failed_tasks.jsonl')
     @property
     def error_log_file(self) -> str:
         return self._cfg.get('file_paths', {}).get('error_log_file', 'data/error_records.jsonl')
