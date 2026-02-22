@@ -133,7 +133,7 @@ class IOHandler:
             "error_detail": data.get("error"),
             "last_code_snippet": data.get("code")  # 崩溃前拿到的代码，防止丢失
         }
-        error_path = self.cfg.get("error_log_file", "data/error_records.jsonl")
+        error_path = self.cfg.get_path("error_log_file")
 
         async with aiofiles.open(error_path, "a", encoding="utf-8") as f:
             await f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -155,7 +155,7 @@ class IOHandler:
         data["timestamp"] = datetime.now().isoformat()
 
         # 确保失败路径存在 (由 ConfigManager 提供路径)
-        failed_path = self.cfg.get("failed_file", "data/failed_tasks.jsonl")
+        failed_path = self.cfg.get_path("failed_file")
 
         async with aiofiles.open(failed_path, mode="a", encoding="utf-8") as f:
             # ensure_ascii=False 保证中文任务描述不乱码
