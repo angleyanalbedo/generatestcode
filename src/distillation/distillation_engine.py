@@ -5,6 +5,7 @@ import random
 import re
 import os
 import platform
+from datetime import datetime
 from typing import List, Dict, Set, Optional, Any
 
 # 尝试导入异步文件库
@@ -21,6 +22,7 @@ from openai import AsyncOpenAI
 from src.distillation.prompt_manager import PromptManager
 from src.distillation.config_manager import ConfigManager
 from src.stvailder.stvailder import STValidator
+
 
 # 配置日志
 logging.basicConfig(
@@ -118,6 +120,36 @@ class IOHandler:
     async def save_success(self, data: Dict):
         """保存成功数据"""
         await self._write_line(self.output_file, data)
+
+    async def save_failed_record(self, data):
+        """
+        专门记录那些最终没跑通的代码，用于后续的人工回溯或作为 DPO 的‘极差’样本。
+        """
+        async with aiofiles.open(self.cfg.failed_file, "a", encoding="utf-8") as f:
+            await f.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+    async def save_failed_task(self, data: dict):
+        """
+        保存彻底失败的任务（耗尽重试次数或发生异常）。
+        数据结构：
+        {
+            "task": "任务描述",
+            "attempts": [
+                {"code": "...", "error": "...", "type": "syntax/logic"},
+                ...
+            ],
+            "timestamp": "2026-02-22..."
+        }
+        """
+        # 增加时间戳，方便后续追溯
+        data["timestamp"] = datetime.now().isoformat()
+
+        # 确保失败路径存在 (由 ConfigManager 提供路径)
+        failed_path = self.cfg.file_paths.get("failed_file", "data/failed_tasks.jsonl")
+
+        async with aiofiles.open(failed_path, mode="a", encoding="utf-8") as f:
+            # ensure_ascii=False 保证中文任务描述不乱码
+            await f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
     async def save_dpo(self, task: str, chosen: str, rejected: str, metadata: Dict):
         """保存 DPO 数据"""
@@ -340,6 +372,10 @@ class AsyncSTDistillationEngine:
 
                     else:
                         # === 失败路径 (Logic) ===
+                        rejected_history.append({
+                            "code": code,
+                            "error": error_msg if not is_valid else review.get('reason')
+                        })
                         rejected_history.append(code)
                         messages.append({"role": "assistant", "content": code})
                         messages.append({"role": "user", "content": f"Logic Error: {review['reason']}. Fix it."})
@@ -351,9 +387,30 @@ class AsyncSTDistillationEngine:
                         logger.warning(f"⏳ Rate limit, sleeping {wait_time}s...")
                         await asyncio.sleep(wait_time)
                     elif attempt == self.cfg.max_retries - 1:
-                        logger.error(f"❌ Task failed: {str(e)[:50]}")
+                        # 记录异常导致的失败
+                        if attempt == self.cfg.max_retries - 1:
+                            logger.error(f"❌ Final attempt failed with exception: {str(e)[:50]}")
+                            # 如果当前有生成出的 code，即便崩了也存一下作为负样本
+                            if 'code' in locals():
+                                await self.io.save_failed_record({
+                                    "task": task,
+                                    "code": code,
+                                    "error": str(e),
+                                    "type": "exception_failure"
+                                })
                     else:
                         logger.error(e.__str__())
+            # === 彻底失败路径 (跳出循环后) ===
+            if rejected_history:
+                # 即使没成功，也要把这些失败样本存下来
+                # 我们可以存入一个专门的 'failed_attempts.jsonl'
+                await self.io.save_failed_task({
+                    "instruction": task,
+                    "rejected_samples": rejected_history,  # 包含多次重试失败的代码
+                    "final_reason": "Exhausted retries"
+                })
+                logger.warning(f"❌ Task completely failed, saved {len(rejected_history)} rejected samples.")
+
 
     async def run(self):
         """主调度循环"""

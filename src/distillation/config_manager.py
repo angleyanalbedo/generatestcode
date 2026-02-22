@@ -58,3 +58,6 @@ class ConfigManager:
     @property
     def history_file(self) -> str:
         return self._cfg.get('file_paths', {}).get('history_file', 'st_history_dataset.json')
+    @property
+    def failed_file(self) -> str:
+        return self._cfg.get('file_paths', {}).get('failed_file', 'st_failed_dataset.json')

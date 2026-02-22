@@ -13,7 +13,7 @@ file_paths:
   dpo_file: "data/st_dpo_dataset.jsonl"
   golden_file: "data/golden_prompts.json"
   history_file: "data/history.jsonl"
-
+  failed_file: "data/st_failed_dataset.json"
 # 3. 任务目标
 project:
   target_count: 200000               # 目标生成总数
