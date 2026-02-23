@@ -4,9 +4,10 @@ import logging
 import random
 import re
 import os
-import platform
 from datetime import datetime
 from typing import List, Dict, Set, Optional, Any
+
+from llmclient import LLMClient
 
 # 尝试导入异步文件库
 try:
@@ -16,11 +17,9 @@ try:
 except ImportError:
     HAS_AIOFILES = False
 
-from openai import AsyncOpenAI
-
 # 假设这些是你已经定义的外部类
-from src.distillation.prompt_manager import PromptManager
-from src.distillation.config_manager import ConfigManager
+from prompt_manager import PromptManager
+from config_manager import ConfigManager
 from src.stvailder.stvailder import STValidator
 
 
@@ -203,7 +202,7 @@ class AsyncSTDistillationEngine:
     通过组合 (Composition) 持有 IOHandler, ConfigManager, PromptManager。
     """
 
-    def __init__(self, config: ConfigManager, prompts: PromptManager):
+    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient):
         self.cfg = config
         self.prompts = prompts
         self.task_queue = asyncio.Queue(maxsize=500)
@@ -213,7 +212,7 @@ class AsyncSTDistillationEngine:
         self.io = IOHandler(config)
 
         # 2. 组合：实例化 OpenAI 客户端
-        self.aclient = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+        self.llm_client = client
 
         # 3. 状态控制
         self.semaphore = asyncio.Semaphore(config.max_concurrency)
@@ -247,13 +246,12 @@ class AsyncSTDistillationEngine:
             # 调用 PromptManager
             messages = self.prompts.get_brainstorm_messages(topic, count=10)
 
-            response = await self.aclient.chat.completions.create(
-                model=self.cfg.model,
+            response = await self.llm_client.chat(
                 messages=messages,
-                temperature=0.9
+                temperature=0.9,
+                json_mode=True
             )
-            content = self._clean_json_content(response.choices[0].message.content)
-            tasks = json.loads(content)
+            tasks = response
             return [t for t in tasks if isinstance(t, str) and len(t) > 10]
         except Exception as e:
             logger.warning(f"Brainstorm failed: {e}")
@@ -282,12 +280,12 @@ class AsyncSTDistillationEngine:
             messages = [{"role": "user", "content": f"{messages}\nOutput ONLY the new task string."}]
 
         try:
-            response = await self.aclient.chat.completions.create(
-                model=self.cfg.model,
+            response = await self.llm_client.chat(
+                json_mode=False,
                 messages=messages,
                 temperature=0.8
             )
-            return response.choices[0].message.content.strip()
+            return response
         except:
             return base_task
 
@@ -295,13 +293,12 @@ class AsyncSTDistillationEngine:
         """AI 逻辑审查"""
         try:
             messages = self.prompts.get_critique_messages(task, code)
-            response = await self.aclient.chat.completions.create(
-                model=self.cfg.model,
+            response = await self.llm_client.chat(
                 messages=messages,
-                temperature=0.1
+                temperature=0.1,
+                json_mode=True
             )
-            content = self._clean_json_content(response.choices[0].message.content)
-            return json.loads(content)
+            return response
         except:
             return {"passed": True, "reason": "Reviewer Failed (Default Pass)"}
 
@@ -327,13 +324,13 @@ class AsyncSTDistillationEngine:
             for attempt in range(self.cfg.max_retries):
                 try:
                     # --- 生成阶段 ---
-                    response = await self.aclient.chat.completions.create(
-                        model=self.cfg.model,
+                    response = await self.llm_client.chat(
                         messages=messages,
-                        temperature=0.7
+                        temperature=0.7,
+                        json_mode=True
                     )
 
-                    data = json.loads(self._clean_json_content(response.choices[0].message.content))
+                    data = response
                     code = data.get('code', '')
                     thought = data.get('thought', '')
 

@@ -3,11 +3,9 @@ import re
 import os
 import random
 import asyncio
-import platform
-from src.distillation.prompt_manager import PromptManager
-from src.distillation.config_manager import ConfigManager
-import logging
-from typing import List, Dict, Set, Optional, Any
+from prompt_manager import PromptManager
+from config_manager import ConfigManager
+
 # 尝试导入异步文件库，如果没有安装则回退到同步（建议 pip install aiofiles）
 try:
     import aiofiles

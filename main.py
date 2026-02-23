@@ -1,7 +1,9 @@
 import asyncio
+
+from llmclient import LLMClient
 from src.distillation.distillation_engine import AsyncSTDistillationEngine
-from src.distillation.prompt_manager import PromptManager
-from src.distillation.config_manager import ConfigManager
+from prompt_manager import PromptManager
+from config_manager import ConfigManager
 import platform
 
 
@@ -11,5 +13,6 @@ if __name__ == "__main__":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     config = ConfigManager()
     prompt_manager = PromptManager('prompts.yaml')
-    engine = AsyncSTDistillationEngine(config,prompt_manager)
+    client = LLMClient(api_key=config.api_key, base_url=config.base_url,backend_type=config.backend_type,model=config.model)
+    engine = AsyncSTDistillationEngine(config,prompt_manager,client)
     asyncio.run(engine.run())

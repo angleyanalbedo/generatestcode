@@ -64,3 +64,7 @@ class ConfigManager:
     @property
     def error_log_file(self) -> str:
         return self._cfg.get('file_paths', {}).get('error_log_file', 'data/error_records.jsonl')
+    @property
+    def backend_type(self) -> str:
+        return self._cfg.get('backend', {}).get('type', 'openai')
+
