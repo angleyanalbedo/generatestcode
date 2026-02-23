@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
 * [ ] **STRewriter (代码重构器)**：基于 Lark AST 实现代码变换（如 IF 转 CASE、变量混淆），实现数据量的指数级增强。
 * [ ] **STSlicer (代码切片器)**：实现基于数据流的程序切片，用于提取关键逻辑片段，提升模型对长代码的理解力。
-* [ ] **Semantic Analyzer**: 增加更严格的类型检查与未定义变量扫描。
+* [x] **Semantic Analyzer**: 增加更严格的类型检查与未定义变量扫描。
 * [ ] **Multi-Backend Support**: 增加对 Hugging Face TGI 和本地 Llama.cpp 的原生支持。
 
 ---
