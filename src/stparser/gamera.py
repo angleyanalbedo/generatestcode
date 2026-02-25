@@ -4,25 +4,26 @@ ST_GRAMMAR = r"""
     ?program_unit: fb_decl | function_decl | program_decl
 
     program_decl: PROGRAM IDENT var_block* body END_PROGRAM
-
     fb_decl: FUNCTION_BLOCK IDENT var_block* body END_FUNCTION_BLOCK
-
     function_decl: FUNCTION IDENT ":" type_def var_block* body END_FUNCTION
 
-
     var_block: var_block_head var_decl+ END_VAR
-    
+
+    # 🚀 修正 1：直接使用大写 Terminal 引用，确保解析器能对上号
     ?var_block_head: (VAR | VAR_INPUT | VAR_OUTPUT | VAR_IN_OUT | VAR_TEMP | VAR_GLOBAL | VAR_EXTERNAL) [var_qualifier]
     ?var_qualifier: CONSTANT | RETAIN | PERSISTENT
 
     ?type_def: TYPE_NAME
              | IDENT
-             | ARRAY "[" NUMBER ".." NUMBER "]" OF type_def
+             | array_def
              | STRUCT var_decl+ END_STRUCT
 
-    TYPE_NAME: TYPE 
-              | STRING ["(" NUMBER ")"]
+    # 🚀 修正 2：数组边界支持数字或标识符 (如 MAX_SENSORS)
+    array_def: ARRAY "[" array_bound ".." array_bound "]" OF type_def
+    ?array_bound: NUMBER | IDENT
 
+    TYPE_NAME: TYPE 
+             | STRING ["(" NUMBER ")"]
 
     var_decl: IDENT ":" type_def [":=" expr] ";"
 
@@ -39,7 +40,6 @@ ST_GRAMMAR = r"""
     assign_stmt: IDENT ":=" expr ";"
 
     if_stmt: IF expr THEN body (ELSIF expr THEN body)* [ELSE body] END_IF ";"
-
     case_stmt: CASE expr OF (case_selection)+ [ELSE body] END_CASE ";"
     case_selection: case_list ":" body
     case_list: (case_value) ("," (case_value))*
@@ -134,7 +134,8 @@ ST_GRAMMAR = r"""
 
     TYPE.2: /\b(BOOL|INT|UINT|DINT|REAL|LREAL|TIME|WORD|DWORD|BYTE)\b/i
     
-    ST_LITERAL: /[a-zA-Z_0-9]+#[a-zA-Z_0-9\.\-]+/
+    # 🚀 修正 3：增强型字面量正则，覆盖 T#1ms, 16#FF 等
+    ST_LITERAL: /[a-zA-Z_0-9]+#[a-zA-Z_0-9\.\-\#]+/
 
     %import common.NUMBER
     %import common.WS
@@ -143,7 +144,7 @@ ST_GRAMMAR = r"""
     %ignore WS
     %ignore CPP_COMMENT
     %ignore C_COMMENT
-    
+
     ST_COMMENT: "(*" /(.|\n)*?/ "*)"
     %ignore ST_COMMENT
 """
