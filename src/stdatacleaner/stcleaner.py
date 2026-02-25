@@ -105,7 +105,7 @@ class STDataCleaner:
         g, me, be, e = self.stats["golden"], self.stats["matiec_error"], self.stats["basic_error"], self.stats["empty"]
 
         print("\n" + "=" * 60)
-        print("🛡️ 基于 Matiec 编译器的 ST 数据清洗报告")
+        print("🛡️ 基于 Anltr4 编译器的 ST 数据清洗报告")
         print("=" * 60)
         if t > 0:
             print(f"🥇 Golden (编译完美通过, 可做 SFT):   {g:6d} ({(g / t * 100):.2f}%)")
