@@ -72,54 +72,57 @@ ST_GRAMMAR = r"""
            | NOT factor    -> not_op
            | IDENT "(" [param_list] ")" -> expr_func_call
 
-    # --- 显式定义不区分大小写的关键字 (Terminals) ---
-    PROGRAM: /PROGRAM/i
-    END_PROGRAM: /END_PROGRAM/i
-    FUNCTION_BLOCK: /FUNCTION_BLOCK/i
-    END_FUNCTION_BLOCK: /END_FUNCTION_BLOCK/i
-    FUNCTION: /FUNCTION/i
-    END_FUNCTION: /END_FUNCTION/i
+    # --- 显式定义不区分大小写的关键字 (增加单词边界 \b 防止误切变量名) ---
+    PROGRAM:            /\bPROGRAM\b/i
+    END_PROGRAM:        /\bEND_PROGRAM\b/i
+    FUNCTION_BLOCK:     /\bFUNCTION_BLOCK\b/i
+    END_FUNCTION_BLOCK: /\bEND_FUNCTION_BLOCK\b/i
+    FUNCTION:           /\bFUNCTION\b/i
+    END_FUNCTION:       /\bEND_FUNCTION\b/i
+    
+    # 特别注意：VAR 系列必须精准匹配
+    VAR_INPUT:          /\bVAR_INPUT\b/i
+    VAR_OUTPUT:         /\bVAR_OUTPUT\b/i
+    VAR_IN_OUT:         /\bVAR_IN_OUT\b/i
+    VAR_TEMP:           /\bVAR_TEMP\b/i
+    VAR_GLOBAL:         /\bVAR_GLOBAL\b/i
+    VAR_EXTERNAL:       /\bVAR_EXTERNAL\b/i
+    VAR:                /\bVAR\b/i
+    END_VAR:            /\bEND_VAR\b/i
+    
+    IF:                 /\bIF\b/i
+    THEN:               /\bTHEN\b/i
+    ELSIF:              /\bELSIF\b/i
+    ELSE:               /\bELSE\b/i
+    END_IF:             /\bEND_IF\b/i
+    
+    CASE:               /\bCASE\b/i
+    OF:                 /\bOF\b/i
+    END_CASE:           /\bEND_CASE\b/i
+    
+    FOR:                /\bFOR\b/i
+    TO:                 /\bTO\b/i
+    BY:                 /\bBY\b/i
+    DO:                 /\bDO\b/i
+    END_FOR:            /\bEND_FOR\b/i
+    
+    WHILE:              /\bWHILE\b/i
+    END_WHILE:          /\bEND_WHILE\b/i
+    
+    RETURN:             /\bRETURN\b/i
+    NOT:                /\bNOT\b/i
+    AND:                /\bAND\b/i
+    OR:                 /\bOR\b/i
+    
+    ARRAY:              /\bARRAY\b/i
+    STRUCT:             /\bSTRUCT\b/i
+    END_STRUCT:         /\bEND_STRUCT\b/i
+    STRING:             /\bSTRING\b/i
 
-    VAR: /VAR(?![_a-zA-Z0-9])/i
-    VAR_INPUT: /VAR_INPUT/i
-    VAR_OUTPUT: /VAR_OUTPUT/i
-    VAR_IN_OUT: /VAR_IN_OUT/i
-    VAR_TEMP: /VAR_TEMP/i
-    VAR_GLOBAL: /VAR_GLOBAL/i
-    VAR_EXTERNAL: /VAR_EXTERNAL/i
-    END_VAR: /END_VAR/i
-
-    IF: /IF/i
-    THEN: /THEN/i
-    ELSIF: /ELSIF/i
-    ELSE: /ELSE/i
-    END_IF: /END_IF/i
-
-    CASE: /CASE/i
-    OF: /OF/i
-    END_CASE: /END_CASE/i
-
-    FOR: /FOR/i
-    TO: /TO/i
-    BY: /BY/i
-    DO: /DO/i
-    END_FOR: /END_FOR/i
-
-    WHILE: /WHILE/i
-    END_WHILE: /END_WHILE/i
-
-    RETURN: /RETURN/i
-    NOT: /NOT/i
-    AND: /AND/i
-    OR: /OR/i
-
-    ARRAY: /ARRAY/i
-    STRUCT: /STRUCT/i
-    END_STRUCT: /END_STRUCT/i
-    STRING: /STRING/i
-
-    IDENT: /[a-zA-Z_]\w*/
-    TYPE: /BOOL|INT|UINT|DINT|REAL|LREAL|TIME|WORD|DWORD|STRING|BYTE/i
+    # 降低 IDENT 优先级，确保关键字优先匹配
+    IDENT.0: /[a-zA-Z_][a-zA-Z0-9_]*/
+    # --- 数据类型 ---
+    TYPE: /\b(BOOL|INT|UINT|DINT|REAL|LREAL|TIME|WORD|DWORD|STRING|BYTE)\b/i
 
     ST_LITERAL: /[a-zA-Z_0-9]+#[a-zA-Z_0-9\.\-]+/
 
