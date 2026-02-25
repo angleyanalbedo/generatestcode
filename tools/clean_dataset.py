@@ -13,6 +13,7 @@ def parse_args():
                         help="清洗后数据的输出根目录")
     parser.add_argument("-e", "--ext", type=str, default=".json",
                         help="要处理的文件扩展名 (默认: .json)")
+    parser.add_argument("--iec2c", type=str, default="iec2c", help="iec2c 编译器的绝对路径 (默认: iec2c)")
     return parser.parse_args()
 
 

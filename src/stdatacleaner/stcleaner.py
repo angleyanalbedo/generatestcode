@@ -2,15 +2,19 @@ from pathlib import Path
 from typing import Tuple, List, Dict
 import json
 from tqdm import tqdm
-from src.stvailder import STValidator
+
+from stvailder.matiec_validator import MatiecValidator
+from stvailder.stvailder import FastValidator
 
 
 class STDataCleaner:
-    def __init__(self, input_dir: str, output_dir: str, ext: str = ".json"):
+    def __init__(self, input_dir: str, output_dir: str, iec2c_path: str, ext: str = ".json"):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.ext = ext
-        self.validator = STValidator()
+        # 初始化漏斗组件
+        self.fast_validator = FastValidator()
+        self.matiec_validator = MatiecValidator(iec2c_path=iec2c_path)
 
         # 详细统计数据字典
         self.stats = {
@@ -86,12 +90,12 @@ class STDataCleaner:
                 status = "empty"
                 error_reason = "No code found after repair"
             else:
-                is_valid_s1, msg1 = self.validator.validate(repaired_code)
+                is_valid_s1, msg1 = self.fast_validator.validate(repaired_code)
                 if not is_valid_s1:
                     status = "syntax_error"
                     error_reason = msg1
                 else:
-                    is_valid_s2, msg2 = self.validator.validate_v2(repaired_code)
+                    is_valid_s2, msg2 = self.matiec_validator.validate(repaired_code)
                     if not is_valid_s2:
                         status = "ast_error"
                         error_reason = msg2
