@@ -1,1 +1,1 @@
-from .lark.parser import STParser
+from .anltr4.parser import STParser

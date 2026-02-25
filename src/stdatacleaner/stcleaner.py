@@ -1,12 +1,11 @@
-import re
 from pathlib import Path
 from typing import Tuple, List, Dict
 import json
 from tqdm import tqdm
 
 from ..stvailder import STValidator
-from ..stvailder.matiec_validator import MatiecValidator
-from ..stvailder.stvailder import FastValidator
+from ..stvailder import MatiecValidator
+from ..stvailder import FastValidator
 from ..utils import auto_repair
 
 

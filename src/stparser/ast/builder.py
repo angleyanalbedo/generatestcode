@@ -4,8 +4,8 @@ from typing import List, Optional
 
 from antlr4 import ParserRuleContext
 
-from ..generated.IEC61131ParserVisitor import IEC61131ParserVisitor
-from ..generated.IEC61131Parser import IEC61131Parser
+from ..anltr4.generated.IEC61131ParserVisitor import IEC61131ParserVisitor
+from ..anltr4.generated.IEC61131Parser import IEC61131Parser
 
 from .nodes import (
     SourceLocation,
@@ -21,8 +21,6 @@ from .nodes import (
     VarRef,
     Literal,
     BinOp,
-    ArrayAccess,
-    FieldAccess,
     CallExpr,   #新增
     CaseStmt,
     CaseEntry,

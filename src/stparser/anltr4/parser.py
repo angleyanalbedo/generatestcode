@@ -1,9 +1,10 @@
 from antlr4 import InputStream, CommonTokenStream
 from antlr4.error.ErrorListener import ErrorListener
 
-from ..generated.IEC61131Lexer import IEC61131Lexer
-from ..generated.IEC61131Parser import IEC61131Parser
-from  ..generated.IEC61131ParserVisitor import IEC61131ParserVisitor
+from utils import auto_repair
+from stparser.anltr4.generated.IEC61131Lexer import IEC61131Lexer
+from stparser.anltr4.generated.IEC61131Parser import IEC61131Parser
+from stparser.anltr4.generated.IEC61131ParserVisitor import IEC61131ParserVisitor
 
 
 
@@ -65,6 +66,7 @@ class STAstBuilder(IEC61131ParserVisitor):
 class STParser:
     def preprocess_st(self, code: str) -> str:
         # 在这里放入你的预处理逻辑（如转大写、去特殊注释等）
+        code = auto_repair(code)
         return code
 
     def get_ast(self, code: str) -> dict:

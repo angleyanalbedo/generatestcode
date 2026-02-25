@@ -2,7 +2,7 @@ import random
 from lark import Transformer, v_args
 from typing import Any, List, Dict
 
-from stparser.lark.analyzer import STSemanticAnalyzer
+from ..stparser.lark.analyzer import STSemanticAnalyzer
 
 
 class STRewriterDeprecated(Transformer):
