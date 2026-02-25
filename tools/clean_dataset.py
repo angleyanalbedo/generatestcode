@@ -13,7 +13,8 @@ def parse_args():
                         help="清洗后数据的输出根目录")
     parser.add_argument("-e", "--ext", type=str, default=".json",
                         help="要处理的文件扩展名 (默认: .json)")
-    parser.add_argument("--iec2c", type=str, default="iec2c", help="iec2c 编译器的绝对路径 (默认: iec2c)")
+    parser.add_argument("--iec2c", type=str, default="tools/MatIEC/iec2c", help="iec2c 编译器的绝对路径 (默认: iec2c)")
+    parser.add_argument("-I", "--st_lib", type=str, default="tools/MatIEC/lib", help="Matiec 标准库 lib 文件夹的路径")
     return parser.parse_args()
 
 
@@ -27,6 +28,8 @@ if __name__ == "__main__":
     cleaner = STDataCleaner(
         input_dir=args.input_dir,
         output_dir=args.output_dir,
-        ext=args.ext
+        ext=args.ext,
+        iec2c_path=args.iec2c,
+        st_lib_path=args.st_lib
     )
     cleaner.run()
