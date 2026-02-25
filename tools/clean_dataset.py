@@ -5,47 +5,39 @@ from pathlib import Path
 from typing import Tuple, List, Dict
 
 from tqdm import tqdm
-
 from src.stvailder import STValidator
 
 
 class STDataCleaner:
-    def __init__(self, input_dir: str, output_dir: str,mode: bool, ext: str = ".json"):
+    def __init__(self, input_dir: str, output_dir: str, ext: str = ".json"):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.ext = ext
-        self.strict_mode = mode
         self.validator = STValidator()
 
-        # 准备输出目录结构
-        self.valid_dir = self.output_dir / "valid"
-        self.invalid_dir = self.output_dir / "invalid"
-        self.valid_dir.mkdir(parents=True, exist_ok=True)
-        self.invalid_dir.mkdir(parents=True, exist_ok=True)
-
-        # 统计数据
+        # 详细统计数据字典
         self.stats = {
             "total_files": 0,
             "processed_files": 0,
             "total_samples": 0,
-            "valid_samples": 0,
-            "invalid_samples": 0
+            "golden": 0,  # 完全正确 (可用于 SFT)
+            "syntax_error": 0,  # 正则校验失败 (绝佳的 DPO 负样本)
+            "ast_error": 0,  # 语义校验失败 (可用于后续大模型修复)
+            "empty": 0  # 无法抢救的空数据
         }
 
     def auto_repair(self, code: str) -> str:
-        """尝试自动修复和提取纯净的 ST 代码，防止因为多余的字符导致 AST 解析失败"""
+        """尝试自动修复和提取纯净的 ST 代码"""
         if not code:
             return ""
 
-        # 1. 剥离 Markdown 包装 (很多数据集带有 ```st ... ```)
         import re
-        # 提取 ``` 之间的内容
+        # 1. 剥离 Markdown 包装
         md_match = re.search(r"```[a-zA-Z]*\n(.*?)```", code, re.DOTALL | re.IGNORECASE)
         if md_match:
             code = md_match.group(1)
 
-        # 2. 尝试过滤掉开头的自然语言废话 (比如 "Here is the code:\n")
-        # 找到第一个关键字的位置
+        # 2. 尝试过滤掉开头的自然语言废话
         keywords = ["FUNCTION_BLOCK", "FUNCTION", "PROGRAM", "VAR", "TYPE"]
         first_idx = len(code)
         for kw in keywords:
@@ -58,26 +50,38 @@ class STDataCleaner:
 
         return code.strip()
 
-    def process_single_file(self, file_path: Path, strict_mode: bool = False) -> Tuple[List[Dict], List[Dict]]:
-        """处理单个 JSON 文件"""
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+    def process_single_file(self, file_path: Path) -> Dict[str, List[Dict]]:
+        """处理单个 JSON 文件，按质量分类返回数据字典"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            print(f"\n⚠️ 警告: 文件解析失败，跳过 -> {file_path.name}")
+            return {}
 
-        valid_data, invalid_data = [], []
+        if not isinstance(data, list):
+            print(f"\n⚠️ 警告: 数据格式非数组，跳过 -> {file_path.name}")
+            return {}
+
+        # 准备分类桶
+        categorized_data = {
+            "golden": [],
+            "syntax_error": [],
+            "ast_error": [],
+            "empty": []
+        }
 
         for item in data:
             self.stats["total_samples"] += 1
             original_code = item.get("output", "")
 
-            # 🚀 第一步：自动抢救代码格式
+            # 🚀 第一步：自动抢救
             repaired_code = self.auto_repair(original_code)
-
-            # 如果修复后代码有变化，更新回 item
             if repaired_code != original_code:
                 item["output"] = repaired_code
                 item["was_repaired"] = True
 
-            # 🚀 第二步：级联校验并打标
+            # 🚀 第二步：级联校验
             status = "golden"
             error_reason = None
 
@@ -85,42 +89,29 @@ class STDataCleaner:
                 status = "empty"
                 error_reason = "No code found after repair"
             else:
-                # 校验阶段 1: 静态正则校验
                 is_valid_s1, msg1 = self.validator.validate(repaired_code)
                 if not is_valid_s1:
                     status = "syntax_error"
                     error_reason = msg1
                 else:
-                    # 校验阶段 2: AST 语义校验
                     is_valid_s2, msg2 = self.validator.validate_v2(repaired_code)
                     if not is_valid_s2:
                         status = "ast_error"
                         error_reason = msg2
 
-            # 🚀 第三步：根据模式决定去留
-            # 记录元数据
+            # 🚀 第三步：记录元数据并分装到对应的桶中
             item["st_metadata"] = {
                 "quality": status,
                 "error": error_reason
             }
 
-            if strict_mode:
-                # 严格模式：稍微有错就扔进 invalid
-                if status == "golden":
-                    valid_data.append(item)
-                else:
-                    invalid_data.append(item)
-            else:
-                # 软模式：全部放进 valid，由后续管线根据 quality 标签自行决定怎么用
-                valid_data.append(item)
+            categorized_data[status].append(item)
+            self.stats[status] += 1
 
-        self.stats["valid_samples"] += len(valid_data)
-        self.stats["invalid_samples"] += len(invalid_data)
-        return valid_data, invalid_data
+        return categorized_data
 
     def run(self):
         """执行批量清洗流程"""
-        # 查找所有匹配的文件
         files = list(self.input_dir.rglob(f"*{self.ext}"))
         self.stats["total_files"] = len(files)
 
@@ -128,66 +119,70 @@ class STDataCleaner:
             print(f"❌ 在 {self.input_dir} 中未找到任何 {self.ext} 文件！")
             return
 
-        print(f"🚀 发现 {len(files)} 个文件，开始批量清洗...")
+        print(f"🚀 发现 {len(files)} 个文件，开始批量清洗与分类...")
 
-        # 带进度条遍历文件
         for file_path in tqdm(files, desc="Processing Files"):
-            valid_list, invalid_list = self.process_single_file(file_path,self.strict_mode)
+            categorized_data = self.process_single_file(file_path)
 
-            # 只有处理成功才算一个有效文件
-            if valid_list or invalid_list:
-                self.stats["processed_files"] += 1
+            if not categorized_data:
+                continue
 
-                # 分别落盘保存 (保持原文件名)
-                if valid_list:
-                    out_valid = self.valid_dir / file_path.name
-                    with open(out_valid, 'w', encoding='utf-8') as f:
-                        json.dump(valid_list, f, ensure_ascii=False, indent=2)
+            self.stats["processed_files"] += 1
 
-                if invalid_list:
-                    out_invalid = self.invalid_dir / f"rejected_{file_path.name}"
-                    with open(out_invalid, 'w', encoding='utf-8') as f:
-                        json.dump(invalid_list, f, ensure_ascii=False, indent=2)
+            # 🚀 核心改动：创建与原 JSON 同名的文件夹
+            # 比如原文件是 github_repo_1.json，那么创建一个 github_repo_1/ 的文件夹
+            file_out_dir = self.output_dir / file_path.stem
+            file_out_dir.mkdir(parents=True, exist_ok=True)
+
+            # 将不同类别的数据分别存入该文件夹下
+            for status, items in categorized_data.items():
+                if items:  # 只有该类目下有数据才创建文件
+                    out_file = file_out_dir / f"{status}.json"
+                    with open(out_file, 'w', encoding='utf-8') as f:
+                        json.dump(items, f, ensure_ascii=False, indent=2)
 
         self.print_report()
 
     def print_report(self):
-        """打印最终统计报告"""
+        """打印细粒度统计报告"""
         total = self.stats["total_samples"]
-        valid = self.stats["valid_samples"]
-        invalid = self.stats["invalid_samples"]
-        pass_rate = (valid / total * 100) if total > 0 else 0
+        golden = self.stats["golden"]
+        syntax_err = self.stats["syntax_error"]
+        ast_err = self.stats["ast_error"]
+        empty = self.stats["empty"]
 
-        print("\n" + "=" * 50)
-        print("📊 ST 数据集批量清洗报告")
-        print("=" * 50)
+        print("\n" + "=" * 55)
+        print("📊 ST 数据集深度清洗与分类报告")
+        print("=" * 55)
         print(f"📂 扫描文件数: {self.stats['total_files']} (成功处理: {self.stats['processed_files']})")
         print(f"📦 总样本数:   {total}")
-        print(f"✅ 合格样本:   {valid} ({pass_rate:.2f}%)")
-        print(f"❌ 淘汰样本:   {invalid} ({(100 - pass_rate):.2f}%)")
-        print("-" * 50)
-        print(f"📁 黄金数据存放至: {self.valid_dir.absolute()}")
-        print(f"📁 垃圾数据存放至: {self.invalid_dir.absolute()}")
-        print("=" * 50)
+        print("-" * 55)
+
+        if total > 0:
+            print(f"🥇 Golden (SFT 黄金数据):  {golden:6d} ({(golden / total * 100):.2f}%)")
+            print(f"🥈 AST Error (待 AI 修复): {ast_err:6d} ({(ast_err / total * 100):.2f}%)")
+            print(f"🥉 Syntax Error (DPO 负样本):{syntax_err:6d} ({(syntax_err / total * 100):.2f}%)")
+            print(f"🗑️ Empty (无效废弃数据):  {empty:6d} ({(empty / total * 100):.2f}%)")
+
+        print("-" * 55)
+        print(f"📁 分类结果已按原文件名存放至: {self.output_dir.absolute()}")
+        print("=" * 55)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="ST代码数据集批量清洗工具 (ST Validator CLI)")
+    parser = argparse.ArgumentParser(description="ST代码数据集清洗与分类工具")
     parser.add_argument("-i", "--input_dir", type=str, required=True,
                         help="包含原始 JSON 数据集的输入文件夹路径")
     parser.add_argument("-o", "--output_dir", type=str, required=True,
                         help="清洗后数据的输出根目录")
     parser.add_argument("-e", "--ext", type=str, default=".json",
                         help="要处理的文件扩展名 (默认: .json)")
-    parser.add_argument("--strict", action="store_true",
-                        help="开启严格模式：丢弃所有未通过校验的数据。不加此参数则为软打标模式。")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    # 检查输入目录是否存在
     if not os.path.isdir(args.input_dir):
         print(f"❌ 错误: 输入目录 '{args.input_dir}' 不存在！")
         exit(1)
@@ -195,7 +190,6 @@ if __name__ == "__main__":
     cleaner = STDataCleaner(
         input_dir=args.input_dir,
         output_dir=args.output_dir,
-        ext=args.ext,
-        mode=args.strict
+        ext=args.ext
     )
     cleaner.run()
