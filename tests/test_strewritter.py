@@ -2,13 +2,13 @@ import random
 
 from lark import Token
 
-from strewriter.st_rewriter import STRewriter
+from strewriter.st_rewriter import STRewriterDeprecated
 
 
 def run_tests():
     # 固定随机种子，确保测试结果可复现
     random.seed(42)
-    rewriter = STRewriter(rename_map={"oldVar": "newVar"})
+    rewriter = STRewriterDeprecated(rename_map={"oldVar": "newVar"})
 
     print("=== 测试 1: IDENT 变量重命名 ===")
     t1 = rewriter.IDENT(Token("IDENT", "oldVar"))  # 命中 rename_map
