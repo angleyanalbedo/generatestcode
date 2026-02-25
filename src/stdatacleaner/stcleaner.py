@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from stvailder.matiec_validator import MatiecValidator
 from stvailder.stvailder import FastValidator
+from src.utils import auto_repair
 
 
 class STDataCleaner:
@@ -26,17 +27,6 @@ class STDataCleaner:
             "empty": 0  # 纯废话
         }
 
-    def auto_repair(self, code: str) -> str:
-        if not code: return ""
-        md_match = re.search(r"```[a-zA-Z]*\n(.*?)```", code, re.DOTALL | re.IGNORECASE)
-        if md_match: code = md_match.group(1)
-        keywords = ["FUNCTION_BLOCK", "FUNCTION", "PROGRAM", "VAR", "TYPE"]
-        first_idx = len(code)
-        for kw in keywords:
-            idx = code.upper().find(kw)
-            if idx != -1 and idx < first_idx: first_idx = idx
-        if first_idx != len(code) and first_idx > 0: code = code[first_idx:]
-        return code.strip()
 
     def process_single_file(self, file_path: Path) -> Dict[str, List[Dict]]:
         try:
@@ -51,7 +41,7 @@ class STDataCleaner:
         for item in data:
             self.stats["total_samples"] += 1
             original_code = item.get("output", "")
-            repaired_code = self.auto_repair(original_code)
+            repaired_code = auto_repair(original_code)
 
             if repaired_code != original_code:
                 item["output"] = repaired_code

@@ -10,6 +10,7 @@ from src.stparser.st_parser import STParser
 from src.stparser.st_parser import STSemanticAnalyzer
 from src.stparser.st_parser import STUnparser
 from src.strewriter.st_rewriter import STRewriter
+from src.utils import auto_repair
 
 
 class DataAugmenter:
@@ -51,6 +52,11 @@ class DataAugmenter:
         for item in dataset:
             self.stats["total_original"] += 1
             original_code = item.get("output", "")
+            repaired_code = auto_repair(original_code)
+
+            if repaired_code != original_code:
+                item["output"] = repaired_code
+                item["was_repaired"] = True
 
             # 1. 始终保留原始的真金数据
             augmented_dataset.append(item)
@@ -59,7 +65,7 @@ class DataAugmenter:
                 continue
 
             # 2. 尝试解析成 AST
-            parse_res = self.parser.get_ast(original_code)
+            parse_res = self.parser.get_ast(repaired_code)
             if parse_res.get("status") != "success":
                 self.stats["parse_errors"] += 1
                 continue
