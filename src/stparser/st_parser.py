@@ -2,7 +2,7 @@ from lark import Lark, Transformer, v_args, exceptions
 from typing import Dict, List, Any, Optional
 import logging
 from lark import Lark, exceptions
-from gamera import ST_GRAMMAR
+from .gamera import ST_GRAMMAR
 
 logger = logging.getLogger(__name__)
 # ==========================================

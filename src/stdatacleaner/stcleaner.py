@@ -4,20 +4,23 @@ from typing import Tuple, List, Dict
 import json
 from tqdm import tqdm
 
-from stvailder.matiec_validator import MatiecValidator
-from stvailder.stvailder import FastValidator
+from src.stvailder import STValidator
+from src.stvailder.matiec_validator import MatiecValidator
+from src.stvailder.stvailder import FastValidator
 from src.utils import auto_repair
 
 
 class STDataCleaner:
-    def __init__(self, input_dir: str, output_dir: str, iec2c_path: str, st_lib_path: str, ext: str = ".json"):
+    def __init__(self, input_dir: str, output_dir: str, iec2c_path: str, st_lib_path: str, use_matiec: bool,ext: str = ".json"):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.ext = ext
+        self.use_matiec = use_matiec
 
         # 初始化漏斗组件
         self.fast_validator = FastValidator()
         self.matiec_validator = MatiecValidator(iec2c_path=iec2c_path,st_lib_path=st_lib_path)
+        self.validator = STValidator()
 
         self.stats = {
             "total_files": 0, "processed_files": 0, "total_samples": 0,
@@ -61,7 +64,10 @@ class STDataCleaner:
                     error_reason = msg1
                 else:
                     # 🚀 漏斗第二层：真正的编译器校验
-                    is_valid_s2, msg2 = self.matiec_validator.validate(repaired_code)
+                    if self.use_matiec:
+                        is_valid_s2, msg2 = self.matiec_validator.validate(repaired_code)
+                    else:
+                        is_valid_s2, msg2 = self.validator.validate_v2(repaired_code)
                     if not is_valid_s2:
                         status = "matiec_error"
                         error_reason = msg2

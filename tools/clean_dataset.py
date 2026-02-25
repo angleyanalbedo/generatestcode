@@ -15,6 +15,7 @@ def parse_args():
                         help="要处理的文件扩展名 (默认: .json)")
     parser.add_argument("--iec2c", type=str, default="resource/MatIEC/iec2c", help="iec2c 编译器的绝对路径 (默认: iec2c)")
     parser.add_argument("-I", "--st_lib", type=str, default="resource/MatIEC/lib", help="Matiec 标准库 lib 文件夹的路径")
+    parser.add_argument("-s","--strict",type=bool, default=False,help="是否使用MatIEC编译器进行严格检查")
     return parser.parse_args()
 
 
@@ -30,6 +31,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         ext=args.ext,
         iec2c_path=args.iec2c,
-        st_lib_path=args.st_lib
+        st_lib_path=args.st_lib,
+        use_matiec=args.strict
     )
     cleaner.run()
