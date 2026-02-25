@@ -7,3 +7,11 @@ def test_clean_dataset():
         ext=".json"
     )
     cleaner.run()
+
+def test_clean_dataset_demo():
+    cleaner = STDataCleaner(
+        input_dir="../data/train_data_merged",
+        output_dir="../data/train_data_merged_CLEAN",
+        ext=".json"
+    )
+    cleaner.run()

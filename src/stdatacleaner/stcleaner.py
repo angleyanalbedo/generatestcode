@@ -81,8 +81,10 @@ class STDataCleaner:
         files = list(self.input_dir.rglob(f"*{self.ext}"))
         self.stats["total_files"] = len(files)
         if not files: return
-
-        print(f"🚀 发现 {len(files)} 个文件，启动 Matiec 级联清洗...")
+        if self.use_matiec:
+            print(f"🚀 发现 {len(files)} 个文件，启动 MatIEC 级联清洗...")
+        else:
+            print(f"🚀 发现 {len(files)} 个文件，启动 Anltr4 级联清洗...")
 
         for file_path in tqdm(files, desc="Compiling & Validating"):
             categorized_data = self.process_single_file(file_path)
@@ -105,7 +107,10 @@ class STDataCleaner:
         g, me, be, e = self.stats["golden"], self.stats["matiec_error"], self.stats["basic_error"], self.stats["empty"]
 
         print("\n" + "=" * 60)
-        print("🛡️ 基于 Anltr4 编译器的 ST 数据清洗报告")
+        if self.use_matiec:
+            print("🛡️ 基于 MatIEC 编译器的 ST 数据清洗报告")
+        else:
+            print("🛡️ 基于 Anltr4 编译器的 ST 数据清洗报告")
         print("=" * 60)
         if t > 0:
             print(f"🥇 Golden (编译完美通过, 可做 SFT):   {g:6d} ({(g / t * 100):.2f}%)")
