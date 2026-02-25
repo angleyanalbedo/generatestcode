@@ -152,5 +152,7 @@ if __name__ == "__main__":
 
 [MIT License](https://www.google.com/search?q=MIT+License+text)
 
+`src/stparser` 中的`anltr`实现的代码来自于[ST_Slicing](https://github.com/oneqiao/ST_Slicing)
+
 ---
 
