@@ -45,7 +45,7 @@ class STAstBuilder(IEC61131ParserVisitor):
         }
 
     # 举例：处理赋值语句 (假设你的 g4 文件里有 assignment 规则)
-    def visitAssignment(self, ctx: IEC61131Parser.AssignmentContext):
+    def visitAssignment(self, ctx: IEC61131Parser.Assignment_statementContext):
         return {
             "node_type": "Assignment",
             # .getText() 获取原始文本
