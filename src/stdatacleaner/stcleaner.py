@@ -10,7 +10,7 @@ from ..utils import auto_repair
 
 
 class STDataCleaner:
-    def __init__(self, input_dir: str, output_dir: str, iec2c_path: str, st_lib_path: str, use_matiec: bool,ext: str = ".json"):
+    def __init__(self, input_dir: str, output_dir: str, iec2c_path: str = "iec2c", st_lib_path: str="lib", use_matiec: bool=False,ext: str = ".json"):
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
         self.ext = ext

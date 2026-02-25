@@ -98,12 +98,8 @@ class STValidator:
 
     def validate_v2(self, code: str) -> tuple[bool, str]:
         # 1. 语法校验 (Syntax Check)
-        # 如果 Lark 报错，直接打回
-        tree = self.parser.parse(code)
-        if isinstance(tree, tuple):  # 假设 parse 返回 (None, err_msg)
-            return False, f"Syntax Error: {tree[1]}"
 
-        # 2. 获取结构化数据 (Semantic Analysis)
+        # 获取结构化数据 (Semantic Analysis)
         try:
             struct = self.parser.get_ast(code)
         except Exception as e:

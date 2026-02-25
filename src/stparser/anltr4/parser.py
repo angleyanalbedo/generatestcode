@@ -1,3 +1,5 @@
+from ast import AST
+
 from antlr4 import InputStream, CommonTokenStream
 from antlr4.error.ErrorListener import ErrorListener
 
