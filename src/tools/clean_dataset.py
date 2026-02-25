@@ -2,7 +2,7 @@ import argparse
 
 import os
 
-from src.stdatacleaner.stcleaner import STDataCleaner
+from ..stdatacleaner.stcleaner import STDataCleaner
 
 
 def parse_args():

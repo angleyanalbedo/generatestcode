@@ -6,11 +6,11 @@ import copy
 from pathlib import Path
 from tqdm import tqdm
 
-from src.stparser.st_parser import STParser
-from src.stparser.st_parser import STSemanticAnalyzer
-from src.stparser.st_parser import STUnparser
-from src.strewriter.st_rewriter import STRewriter
-from src.utils import auto_repair
+from ..stparser.st_parser import STParser
+from ..stparser.st_parser import STSemanticAnalyzer
+from ..stparser.st_parser import STUnparser
+from ..strewriter.st_rewriter import STRewriter
+from ..utils import auto_repair
 
 
 class DataAugmenter:

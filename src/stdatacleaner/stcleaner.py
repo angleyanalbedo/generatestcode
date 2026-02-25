@@ -4,10 +4,10 @@ from typing import Tuple, List, Dict
 import json
 from tqdm import tqdm
 
-from src.stvailder import STValidator
-from src.stvailder.matiec_validator import MatiecValidator
-from src.stvailder.stvailder import FastValidator
-from src.utils import auto_repair
+from ..stvailder import STValidator
+from ..stvailder.matiec_validator import MatiecValidator
+from ..stvailder.stvailder import FastValidator
+from ..utils import auto_repair
 
 
 class STDataCleaner:

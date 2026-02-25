@@ -1,7 +1,7 @@
 import re
 from typing import Tuple
 
-from src.stparser.st_parser import STParser
+from ..stparser.st_parser import STParser
 
 # --- 校验器 ---
 
