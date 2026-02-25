@@ -2,8 +2,7 @@ import sys
 from pathlib import Path
 from tqdm import tqdm
 
-
-from src.stparser.st_parser import STParser
+from stparser import STParser
 
 
 def test_parser(input_folder: str):

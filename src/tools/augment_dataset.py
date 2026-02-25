@@ -6,9 +6,9 @@ import copy
 from pathlib import Path
 from tqdm import tqdm
 
-from ..stparser.st_parser import STParser
-from ..stparser.st_parser import STSemanticAnalyzer
-from ..stparser.st_parser import STUnparser
+from stparser import STParser
+from stparser.lark.analyzer import STSemanticAnalyzer
+from ..stparser.unparser import STUnparser
 from ..strewriter.st_rewriter import STRewriter
 from ..utils import auto_repair
 
