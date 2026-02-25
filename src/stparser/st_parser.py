@@ -1,3 +1,5 @@
+import re
+
 from lark import Lark, Transformer, v_args, exceptions
 from typing import Dict, List, Any, Optional
 import logging
@@ -10,7 +12,8 @@ logger = logging.getLogger(__name__)
 # ==========================================
 class STParser:
     def __init__(self):
-        self.parser = Lark(ST_GRAMMAR, parser='lalr', propagate_positions=True, maybe_placeholders=False)
+        self.parser = Lark(ST_GRAMMAR, parser='lalr', propagate_positions=True, maybe_placeholders=False,
+                           g_regex_flags=re.IGNORECASE)
 
     @staticmethod
     def preprocess(code: str) -> str:
