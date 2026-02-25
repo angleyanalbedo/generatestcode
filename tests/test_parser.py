@@ -6,7 +6,7 @@ import src.stparser.anltr4.parser
 from stparser import STParser
 
 
-def test_parser(input_folder: str = "./resource/st_source_code"):
+def test_parser(input_folder: str = "../resource/st_source_code"):
     parser = STParser()
     input_path = Path(input_folder)
 
@@ -72,7 +72,7 @@ def test_parser(input_folder: str = "./resource/st_source_code"):
 
     print("=" * 60)
 
-def test_anltr_parser(input_folder: str = "./resource/st_source_code"):
+def test_anltr_parser(input_folder: str = "../resource/st_source_code"):
     parser = src.stparser.anltr4.parser.STParser()
     input_path = Path(input_folder)
 

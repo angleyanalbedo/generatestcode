@@ -3,7 +3,7 @@ import re
 from lark import Lark, exceptions
 
 from stparser.lark.gamera import ST_GRAMMAR
-from stparser.lark.analyzer import STSemanticAnalyzer
+from stanalyzer.lark_analyzer import STSemanticAnalyzer
 from stparser.unparser import logger
 
 # ==========================================
