@@ -188,9 +188,51 @@ class STParser:
         return res
 
     def get_write_vars(self, node: Any) -> set:
-        if isinstance(node, dict) and node.get("type") == "assignment":
-            return {node["target"]}
-        return set()
+        if not node:
+            return set()
+
+        # 1. 如果是列表(代码块)，递归遍历所有子语句
+        if isinstance(node, list):
+            res = set()
+            for x in node:
+                res |= self.get_write_vars(x)
+            return res
+
+        if not isinstance(node, dict):
+            return set()
+
+        ntype = node.get("type")
+        res = set()
+
+        # 2. 捕捉核心的写入动作：赋值
+        if ntype == "assignment":
+            target = node.get("target")
+            # 兼容 target 是字典或字符串
+            if isinstance(target, dict) and target.get("type") == "variable":
+                res.add(target.get("name"))
+            elif isinstance(target, str):
+                res.add(target)
+
+        # 3. 深入控制流内部挖掘嵌套的写入
+        elif ntype == "if_statement":
+            res |= self.get_write_vars(node.get("then_branch"))
+            res |= self.get_write_vars(node.get("else_branch"))
+
+        elif ntype == "case_statement":
+            for selection in node.get("selections", []):
+                res |= self.get_write_vars(selection.get("body"))
+            res |= self.get_write_vars(node.get("else_branch"))
+
+        elif ntype == "for_loop":
+            res |= self.get_write_vars(node.get("body"))
+
+        elif ntype == "while_loop":
+            res |= self.get_write_vars(node.get("body"))
+
+        # 注意：如果 ST 代码中存在通过参数传递修改外部变量的情况 (比如 VAR_IN_OUT)，
+        # 这里还需要解析 func_call 来捕捉写入。目前标准赋值已经足够应付基础打乱。
+
+        return res
 
 # ==========================================
 # 3. 语义分析器 (负责将 AST 转换为 Python 字典)

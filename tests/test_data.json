@@ -1,0 +1,20 @@
+[
+  {
+    "test_id": "test_basic_assignment",
+    "description": "测试基础赋值和指令重排",
+    "input_code": "A := 1;\nB := 2;\nC := A + B;",
+    "should_pass": true
+  },
+  {
+    "test_id": "test_if_inversion",
+    "description": "测试 IF 条件反转",
+    "input_code": "IF X > 0 THEN\n    Y := 1;\nELSE\n    Y := 0;\nEND_IF;",
+    "should_pass": true
+  },
+  {
+    "test_id": "test_empty_code",
+    "description": "测试空代码的鲁棒性",
+    "input_code": "",
+    "should_pass": true
+  }
+]
