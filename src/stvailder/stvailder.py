@@ -105,7 +105,7 @@ class STValidator:
 
         # 2. 获取结构化数据 (Semantic Analysis)
         try:
-            struct = self.parser.get_structure(code)
+            struct = self.parser.get_ast(code)
         except Exception as e:
             return False, f"Analysis Error: {str(e)}"
 

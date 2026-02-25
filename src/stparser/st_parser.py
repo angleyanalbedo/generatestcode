@@ -1,7 +1,10 @@
-import json
-import re
+
 from lark import Lark, Transformer, v_args, exceptions
 from typing import Dict, List, Any, Optional
+import logging
+from lark import Lark, exceptions
+
+logger = logging.getLogger(__name__)
 
 # ==========================================
 # 1. 工业级 IEC 61131-3 EBNF 语法定义 (完全体)
@@ -107,132 +110,58 @@ ST_GRAMMAR = r"""
 # ==========================================
 class STParser:
     def __init__(self):
-        self.parser = Lark(ST_GRAMMAR, parser='lalr', maybe_placeholders=False)
+        self.parser = Lark(ST_GRAMMAR, parser='lalr', propagate_positions=True, maybe_placeholders=False)
+
+    @staticmethod
+    def preprocess(code: str) -> str:
+        """预处理：清理干扰字符，统一换行符"""
+        if not code: return ""
+        # 很多从网上爬的代码带有不可见的 BOM 头或者奇怪的缩进
+        code = code.lstrip('\ufeff')
+        return code.strip().replace('\r\n', '\n')
 
     def parse(self, code: str):
+        """核心解析逻辑，包含精细化的错误诊断"""
+        clean_code = self.preprocess(code)
         try:
-            return self.parser.parse(code)
+            return self.parser.parse(clean_code)
+
+        except exceptions.UnexpectedToken as e:
+            msg = f"Unexpected token '{e.token}' at line {e.line}, column {e.column}. Expected one of: {e.expected}"
+            logger.warning(f"AST Parsing Failed: {msg}")
+            return None, msg
+
+        except exceptions.UnexpectedCharacters as e:
+            msg = f"Unexpected character at line {e.line}, column {e.column}.\nContext: {e.get_context(clean_code)}"
+            logger.warning(f"AST Parsing Failed: {msg}")
+            return None, msg
+
         except exceptions.LarkError as e:
-            return None, str(e)
+            msg = f"General Parsing Error: {str(e)}"
+            logger.error(msg)
+            return None, msg
 
-    def get_structure(self, code: str) -> Optional[Dict]:
-        tree = self.parse(code)
-        if isinstance(tree, tuple):  
-            return {"status": "error", "message": tree[1]}
+    def get_ast(self, code: str):
+        """
+        对外提供一键获取字典型 AST 的接口，屏蔽掉底层的 Tree 和 Transformer 逻辑。
+        """
+        result = self.parse(code)
 
-        analyzer = STSemanticAnalyzer()
-        return analyzer.transform(tree)
+        # 如果返回的是 tuple，说明 parse 阶段报错了
+        if isinstance(result, tuple):
+            return {"status": "error", "message": result[1]}
 
-    def get_read_vars(self, node: Any) -> set:
-        if not node:
-            return set()
+        if not result:
+            return {"status": "error", "message": "Unknown parsing failure"}
 
-        if isinstance(node, list):
-            res = set()
-            for x in node:
-                res |= self.get_read_vars(x)
-            return res
-
-        if not isinstance(node, dict):
-            return set()
-
-        ntype = node.get("type")
-        res = set()
-
-        if ntype == "variable":
-            res.add(node["name"])
-
-        elif ntype == "binary_op":
-            res |= self.get_read_vars(node["left"])
-            res |= self.get_read_vars(node["right"])
-
-        elif ntype == "unary_op":
-            res |= self.get_read_vars(node["operand"])
-
-        elif ntype == "assignment":
-            res |= self.get_read_vars(node["expr"])
-            if isinstance(node.get("target_metadata"), dict): 
-                res |= self.get_read_vars(node["target_metadata"])
-
-        elif ntype == "if_statement":
-            res |= self.get_read_vars(node["condition"])
-            res |= self.get_read_vars(node["then_branch"])
-            if node.get("else_branch"):
-                res |= self.get_read_vars(node["else_branch"])
-
-        elif ntype == "case_statement":
-            res |= self.get_read_vars(node["expression"]) 
-            for selection in node.get("selections", []):
-                res |= self.get_read_vars(selection["body"])
-            if node.get("else_branch"):
-                res |= self.get_read_vars(node["else_branch"])
-
-        elif ntype == "for_loop":
-            res |= self.get_read_vars(node["from"])
-            res |= self.get_read_vars(node["to"])
-            res |= self.get_read_vars(node["step"])
-            res |= self.get_read_vars(node["body"])
-
-        elif ntype == "while_loop":
-            res |= self.get_read_vars(node["condition"])
-            res |= self.get_read_vars(node["body"])
-
-        elif ntype == "func_call":
-            for arg in node.get("arg_list", []):
-                if isinstance(arg, dict) and "param_name" in arg:
-                    # 正式参数调用 IN:=X0，只读右侧 expr
-                    res |= self.get_read_vars(arg["expr"])
-                else:
-                    res |= self.get_read_vars(arg)
-
-        return res
-
-    def get_write_vars(self, node: Any) -> set:
-        if not node:
-            return set()
-
-        # 1. 如果是列表(代码块)，递归遍历所有子语句
-        if isinstance(node, list):
-            res = set()
-            for x in node:
-                res |= self.get_write_vars(x)
-            return res
-
-        if not isinstance(node, dict):
-            return set()
-
-        ntype = node.get("type")
-        res = set()
-
-        # 2. 捕捉核心的写入动作：赋值
-        if ntype == "assignment":
-            target = node.get("target")
-            # 兼容 target 是字典或字符串
-            if isinstance(target, dict) and target.get("type") == "variable":
-                res.add(target.get("name"))
-            elif isinstance(target, str):
-                res.add(target)
-
-        # 3. 深入控制流内部挖掘嵌套的写入
-        elif ntype == "if_statement":
-            res |= self.get_write_vars(node.get("then_branch"))
-            res |= self.get_write_vars(node.get("else_branch"))
-
-        elif ntype == "case_statement":
-            for selection in node.get("selections", []):
-                res |= self.get_write_vars(selection.get("body"))
-            res |= self.get_write_vars(node.get("else_branch"))
-
-        elif ntype == "for_loop":
-            res |= self.get_write_vars(node.get("body"))
-
-        elif ntype == "while_loop":
-            res |= self.get_write_vars(node.get("body"))
-
-        # 注意：如果 ST 代码中存在通过参数传递修改外部变量的情况 (比如 VAR_IN_OUT)，
-        # 这里还需要解析 func_call 来捕捉写入。目前标准赋值已经足够应付基础打乱。
-
-        return res
+        try:
+            # 实例化你的分析器，把 Tree 洗成干净的 Dict
+            analyzer = STSemanticAnalyzer()
+            ast_dict = analyzer.transform(result)
+            return {"status": "success", "ast": ast_dict}
+        except Exception as e:
+            logger.error(f"Semantic Transformation Error: {str(e)}")
+            return {"status": "error", "message": f"Transformer Error: {str(e)}"}
 
 # ==========================================
 # 3. 语义分析器 (负责将 AST 转换为 Python 字典)
@@ -341,55 +270,84 @@ class STSemanticAnalyzer(Transformer):
     # ---------------------------------------------------------
     # --- 新增：数据依赖分析 (Data Dependency Analysis) ---
     # ---------------------------------------------------------
+    def get_read_vars(self, node: Any) -> set:
+        if not node: return set()
+        if isinstance(node, list):
+            res = set()
+            for x in node: res |= self.get_read_vars(x)
+            return res
+        if not isinstance(node, dict): return set()
 
-    def get_read_vars(self, stmt):
-        """
-        递归遍历 AST 节点，提取所有被“读取”的变量。
-        """
-        reads = set()
+        ntype = node.get("type")
+        res = set()
 
-        def walk(node):
-            if isinstance(node, dict):
-                # 如果遇到变量节点，记录它
-                if node.get("type") == "variable":
-                    reads.add(node.get("name"))
+        if ntype == "variable":
+            res.add(node["name"])
+        elif ntype == "binary_op":
+            res |= self.get_read_vars(node["left"])
+            res |= self.get_read_vars(node["right"])
+        elif ntype == "unary_op":
+            res |= self.get_read_vars(node["operand"])
+        elif ntype == "assignment":
+            res |= self.get_read_vars(node["expr"])
+            if isinstance(node.get("target_metadata"), dict):
+                res |= self.get_read_vars(node["target_metadata"])
+        elif ntype == "if_statement":
+            res |= self.get_read_vars(node["condition"])
+            res |= self.get_read_vars(node["then_branch"])
+            if node.get("else_branch"):
+                res |= self.get_read_vars(node["else_branch"])
+        elif ntype == "case_statement":
+            res |= self.get_read_vars(node["expression"])
+            for selection in node.get("selections", []):
+                res |= self.get_read_vars(selection["body"])
+            if node.get("else_branch"):
+                res |= self.get_read_vars(node["else_branch"])
+        elif ntype == "for_loop":
+            res |= self.get_read_vars(node["from"])
+            res |= self.get_read_vars(node["to"])
+            res |= self.get_read_vars(node["step"])
+            res |= self.get_read_vars(node["body"])
+        elif ntype == "while_loop":
+            res |= self.get_read_vars(node["condition"])
+            res |= self.get_read_vars(node["body"])
+        elif ntype == "func_call":
+            for arg in node.get("arg_list", []):
+                if isinstance(arg, dict) and "param_name" in arg:
+                    res |= self.get_read_vars(arg["expr"])
+                else:
+                    res |= self.get_read_vars(arg)
+        return res
 
-                # 继续往下遍历所有子节点
-                for key, value in node.items():
-                    # ⚠️ 关键过滤：如果是赋值语句，等号左边的变量是被“写入”的，不能算作读取
-                    # (注意：如果是 A[i] := 1，这里的 i 是读取，但目前你的 AST 尚未支持数组索引，后续可扩展)
-                    if node.get("type") == "assignment" and key == "target":
-                        continue
-                    walk(value)
-            elif isinstance(node, list):
-                for item in node:
-                    walk(item)
+    def get_write_vars(self, node: Any) -> set:
+        if not node: return set()
+        if isinstance(node, list):
+            res = set()
+            for x in node: res |= self.get_write_vars(x)
+            return res
+        if not isinstance(node, dict): return set()
 
-        walk(stmt)
-        return reads
+        ntype = node.get("type")
+        res = set()
 
-    def get_write_vars(self, stmt):
-        """
-        提取语句中被“写入/修改”的变量。
-        在目前的 ST 子集中，主要就是赋值语句 (assignment) 的 target。
-        """
-        writes = set()
-
-        if not isinstance(stmt, dict):
-            return set()
-
-        # 如果是赋值语句，提取等号左边的变量名
-        if stmt.get("type") == "assignment":
-            target = stmt.get("target")
+        if ntype == "assignment":
+            target = node.get("target")
             if isinstance(target, dict) and target.get("type") == "variable":
-                writes.add(target.get("name"))
-            elif isinstance(target, str):  # 兼容 target 直接是字符串的情况
-                writes.add(target)
-
-        # 注意：如果未来支持了功能块调用 (比如 Timer(IN:=TRUE))，
-        # Timer 本身的状态也被写入了，可以在这里扩展逻辑。
-
-        return writes
+                res.add(target.get("name"))
+            elif isinstance(target, str):
+                res.add(target)
+        elif ntype == "if_statement":
+            res |= self.get_write_vars(node.get("then_branch"))
+            res |= self.get_write_vars(node.get("else_branch"))
+        elif ntype == "case_statement":
+            for selection in node.get("selections", []):
+                res |= self.get_write_vars(selection.get("body"))
+            res |= self.get_write_vars(node.get("else_branch"))
+        elif ntype == "for_loop":
+            res |= self.get_write_vars(node.get("body"))
+        elif ntype == "while_loop":
+            res |= self.get_write_vars(node.get("body"))
+        return res
 
 # ==========================================
 # 4. 代码还原器
