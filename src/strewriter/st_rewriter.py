@@ -1,6 +1,8 @@
 import random
 from lark import Transformer, v_args
 
+from src.stparser.st_parser import STSemanticAnalyzer
+
 
 class STRewriter(Transformer):
     """
@@ -11,6 +13,7 @@ class STRewriter(Transformer):
         super().__init__()
         self.rename_map = rename_map or {}
         self.mode = mode  # augment: 随机增强, rename: 强制重命名
+        self.analyzer = STSemanticAnalyzer()
 
     @v_args(inline=True)
     def IDENT(self, token):

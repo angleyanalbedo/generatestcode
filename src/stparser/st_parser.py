@@ -296,6 +296,59 @@ class STSemanticAnalyzer(Transformer):
             "expr": items[1]
         }
 
+    # ---------------------------------------------------------
+    # --- 新增：数据依赖分析 (Data Dependency Analysis) ---
+    # ---------------------------------------------------------
+
+    def get_read_vars(self, stmt):
+        """
+        递归遍历 AST 节点，提取所有被“读取”的变量。
+        """
+        reads = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                # 如果遇到变量节点，记录它
+                if node.get("type") == "variable":
+                    reads.add(node.get("name"))
+
+                # 继续往下遍历所有子节点
+                for key, value in node.items():
+                    # ⚠️ 关键过滤：如果是赋值语句，等号左边的变量是被“写入”的，不能算作读取
+                    # (注意：如果是 A[i] := 1，这里的 i 是读取，但目前你的 AST 尚未支持数组索引，后续可扩展)
+                    if node.get("type") == "assignment" and key == "target":
+                        continue
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(stmt)
+        return reads
+
+    def get_write_vars(self, stmt):
+        """
+        提取语句中被“写入/修改”的变量。
+        在目前的 ST 子集中，主要就是赋值语句 (assignment) 的 target。
+        """
+        writes = set()
+
+        if not isinstance(stmt, dict):
+            return set()
+
+        # 如果是赋值语句，提取等号左边的变量名
+        if stmt.get("type") == "assignment":
+            target = stmt.get("target")
+            if isinstance(target, dict) and target.get("type") == "variable":
+                writes.add(target.get("name"))
+            elif isinstance(target, str):  # 兼容 target 直接是字符串的情况
+                writes.add(target)
+
+        # 注意：如果未来支持了功能块调用 (比如 Timer(IN:=TRUE))，
+        # Timer 本身的状态也被写入了，可以在这里扩展逻辑。
+
+        return writes
+
 # ==========================================
 # 4. 代码还原器
 # ==========================================
@@ -304,25 +357,66 @@ class STUnparser:
         if not node: return ""
         spacing = "    " * indent
 
+        # 处理语句列表
         if isinstance(node, list):
             return "".join([self.unparse(item, indent) for item in node])
 
-        ntype = node.get("type")
+        # 获取节点类型
+        if isinstance(node, dict):
+            ntype = node.get("type")
 
-        if ntype == "if_statement":
-            code = f"{spacing}IF {self._expr(node['condition'])} THEN\n"
-            code += self.unparse(node['then_branch'], indent + 1)
-            if node.get("else_branch"):
-                code += f"{spacing}ELSE\n"
-                code += self.unparse(node['else_branch'], indent + 1)
-            code += f"{spacing}END_IF;\n"
-            return code
+            # --- 原有逻辑 ---
+            if ntype == "if_statement":
+                code = f"{spacing}IF {self._expr(node['condition'])} THEN\n"
+                code += self.unparse(node['then_branch'], indent + 1)
+                if node.get("else_branch"):
+                    code += f"{spacing}ELSE\n"
+                    code += self.unparse(node['else_branch'], indent + 1)
+                code += f"{spacing}END_IF;\n"
+                return code
 
-        if ntype == "assignment":
-            return f"{spacing}{node['target']} := {self._expr(node['expr'])};\n"
-            
-        if ntype == "return":
-            return f"{spacing}RETURN;\n"
+            if ntype == "assignment":
+                # 兼容 target 是字典或字符串的情况
+                target_str = self._expr(node['target']) if isinstance(node['target'], dict) else str(node['target'])
+                return f"{spacing}{target_str} := {self._expr(node['expr'])};\n"
+
+            if ntype == "return":
+                return f"{spacing}RETURN;\n"
+
+            # --- 新增：函数块/程序声明 ---
+            if node.get("unit_type") in ["FUNCTION_BLOCK", "PROGRAM", "FUNCTION"]:
+                unit_type = node.get("unit_type")
+                name = node.get("name")
+                code = f"{spacing}{unit_type} {name}\n"
+                # 渲染所有 VAR 块
+                for var_block in node.get("var_blocks", []):
+                    code += self.unparse(var_block, indent + 1)
+                # 渲染主体代码
+                code += self.unparse(node.get("body"), indent + 1)
+                code += f"{spacing}END_{unit_type}\n"
+                return code
+
+            # --- 新增：变量块 (VAR ... END_VAR) ---
+            if "kind" in node and "vars" in node:
+                code = f"{spacing}{node['kind']}\n"
+                for v in node["vars"]:
+                    code += self.unparse(v, indent + 1)
+                code += f"{spacing}END_VAR\n"
+                return code
+
+            # --- 新增：单行变量声明 (A : INT := 1;) ---
+            if "name" in node and "type" in node and not ntype:
+                name = node["name"]
+                vtype = node["type"]
+                code = f"{spacing}{name} : {vtype}"
+                if node.get("init"):
+                    code += f" := {self._expr(node['init'])}"
+                code += ";\n"
+                return code
+
+            # --- 新增：函数/功能块调用作为独立语句 (如 Timer(IN:=TRUE);) ---
+            if ntype == "func_call":
+                return f"{spacing}{self._expr(node)};\n"
 
         return ""
 
@@ -338,5 +432,21 @@ class STUnparser:
         if etype == "unary_op":
             if expr['op'] == "-":
                 return f"-{self._expr(expr['operand'])}"
+            elif expr['op'].upper() == "NOT":
+                return f"NOT {self._expr(expr['operand'])}"
             return f"{expr['op']}({self._expr(expr['operand'])})"
+
+        # --- 新增：处理函数/功能块调用的参数渲染 ---
+        if etype == "func_call":
+            name = expr.get("name")
+            args = []
+            for arg in expr.get("arg_list", []):
+                if isinstance(arg, dict) and "param_name" in arg:
+                    # 命名参数调用 (IN:=TRUE)
+                    args.append(f"{arg['param_name']}:={self._expr(arg['expr'])}")
+                else:
+                    # 位置参数调用 (TRUE)
+                    args.append(self._expr(arg))
+            return f"{name}({', '.join(args)})"
+
         return ""
