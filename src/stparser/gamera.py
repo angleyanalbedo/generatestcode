@@ -9,13 +9,20 @@ ST_GRAMMAR = r"""
 
     function_decl: FUNCTION IDENT ":" type_def var_block* body END_FUNCTION
 
-    var_block: (VAR | VAR_INPUT | VAR_OUTPUT | VAR_IN_OUT | VAR_TEMP | VAR_GLOBAL | VAR_EXTERNAL) var_decl+ END_VAR
 
-    ?type_def: TYPE
+    var_block: var_block_head var_decl+ END_VAR
+    
+    ?var_block_head: (VAR | VAR_INPUT | VAR_OUTPUT | VAR_IN_OUT | VAR_TEMP | VAR_GLOBAL | VAR_EXTERNAL) [var_qualifier]
+    ?var_qualifier: CONSTANT | RETAIN | PERSISTENT
+
+    ?type_def: TYPE_NAME
              | IDENT
-             | STRING ["(" NUMBER ")"]
              | ARRAY "[" NUMBER ".." NUMBER "]" OF type_def
              | STRUCT var_decl+ END_STRUCT
+
+    TYPE_NAME: TYPE 
+              | STRING ["(" NUMBER ")"]
+
 
     var_decl: IDENT ":" type_def [":=" expr] ";"
 
@@ -73,57 +80,60 @@ ST_GRAMMAR = r"""
            | IDENT "(" [param_list] ")" -> expr_func_call
 
     # --- 显式定义不区分大小写的关键字 (增加单词边界 \b 防止误切变量名) ---
-    PROGRAM:            /\bPROGRAM\b/i
-    END_PROGRAM:        /\bEND_PROGRAM\b/i
-    FUNCTION_BLOCK:     /\bFUNCTION_BLOCK\b/i
-    END_FUNCTION_BLOCK: /\bEND_FUNCTION_BLOCK\b/i
-    FUNCTION:           /\bFUNCTION\b/i
-    END_FUNCTION:       /\bEND_FUNCTION\b/i
+    # --- 词法定义 (带优先级与边界保护) ---
+    PROGRAM.2:            /\bPROGRAM\b/i
+    END_PROGRAM.2:        /\bEND_PROGRAM\b/i
+    FUNCTION_BLOCK.2:     /\bFUNCTION_BLOCK\b/i
+    END_FUNCTION_BLOCK.2: /\bEND_FUNCTION_BLOCK\b/i
+    FUNCTION.2:           /\bFUNCTION\b/i
+    END_FUNCTION.2:       /\bEND_FUNCTION\b/i
     
-    # 特别注意：VAR 系列必须精准匹配
-    VAR_INPUT:          /\bVAR_INPUT\b/i
-    VAR_OUTPUT:         /\bVAR_OUTPUT\b/i
-    VAR_IN_OUT:         /\bVAR_IN_OUT\b/i
-    VAR_TEMP:           /\bVAR_TEMP\b/i
-    VAR_GLOBAL:         /\bVAR_GLOBAL\b/i
-    VAR_EXTERNAL:       /\bVAR_EXTERNAL\b/i
-    VAR:                /\bVAR\b/i
-    END_VAR:            /\bEND_VAR\b/i
+    VAR_INPUT.2:          /\bVAR_INPUT\b/i
+    VAR_OUTPUT.2:         /\bVAR_OUTPUT\b/i
+    VAR_IN_OUT.2:         /\bVAR_IN_OUT\b/i
+    VAR_TEMP.2:           /\bVAR_TEMP\b/i
+    VAR_GLOBAL.2:         /\bVAR_GLOBAL\b/i
+    VAR_EXTERNAL.2:       /\bVAR_EXTERNAL\b/i
+    VAR.2:                /\bVAR\b/i
+    END_VAR.2:            /\bEND_VAR\b/i
     
-    IF:                 /\bIF\b/i
-    THEN:               /\bTHEN\b/i
-    ELSIF:              /\bELSIF\b/i
-    ELSE:               /\bELSE\b/i
-    END_IF:             /\bEND_IF\b/i
+    CONSTANT.2:           /\bCONSTANT\b/i
+    RETAIN.2:             /\bRETAIN\b/i
+    PERSISTENT.2:         /\bPERSISTENT\b/i
     
-    CASE:               /\bCASE\b/i
-    OF:                 /\bOF\b/i
-    END_CASE:           /\bEND_CASE\b/i
+    IF.2:                 /\bIF\b/i
+    THEN.2:               /\bTHEN\b/i
+    ELSIF.2:              /\bELSIF\b/i
+    ELSE.2:               /\bELSE\b/i
+    END_IF.2:             /\bEND_IF\b/i
     
-    FOR:                /\bFOR\b/i
-    TO:                 /\bTO\b/i
-    BY:                 /\bBY\b/i
-    DO:                 /\bDO\b/i
-    END_FOR:            /\bEND_FOR\b/i
+    CASE.2:               /\bCASE\b/i
+    OF.2:                 /\bOF\b/i
+    END_CASE.2:           /\bEND_CASE\b/i
     
-    WHILE:              /\bWHILE\b/i
-    END_WHILE:          /\bEND_WHILE\b/i
+    FOR.2:                /\bFOR\b/i
+    TO.2:               /\bTO\b/i
+    BY.2:               /\bBY\b/i
+    DO.2:               /\bDO\b/i
+    END_FOR.2:          /\bEND_FOR\b/i
     
-    RETURN:             /\bRETURN\b/i
-    NOT:                /\bNOT\b/i
-    AND:                /\bAND\b/i
-    OR:                 /\bOR\b/i
+    WHILE.2:            /\bWHILE\b/i
+    END_WHILE.2:        /\bEND_WHILE\b/i
     
-    ARRAY:              /\bARRAY\b/i
-    STRUCT:             /\bSTRUCT\b/i
-    END_STRUCT:         /\bEND_STRUCT\b/i
-    STRING:             /\bSTRING\b/i
+    RETURN.2:           /\bRETURN\b/i
+    NOT.2:              /\bNOT\b/i
+    AND.2:              /\bAND\b/i
+    OR.2:               /\bOR\b/i
+    
+    ARRAY.2:            /\bARRAY\b/i
+    STRUCT.2:           /\bSTRUCT\b/i
+    END_STRUCT.2:       /\bEND_STRUCT\b/i
+    STRING.2:           /\bSTRING\b/i
 
-    # 降低 IDENT 优先级，确保关键字优先匹配
-    IDENT.0: /[a-zA-Z_][a-zA-Z0-9_]*/
-    # --- 数据类型 ---
-    TYPE: /\b(BOOL|INT|UINT|DINT|REAL|LREAL|TIME|WORD|DWORD|STRING|BYTE)\b/i
+    IDENT.1: /[a-zA-Z_][a-zA-Z0-9_]*/
 
+    TYPE.2: /\b(BOOL|INT|UINT|DINT|REAL|LREAL|TIME|WORD|DWORD|BYTE)\b/i
+    
     ST_LITERAL: /[a-zA-Z_0-9]+#[a-zA-Z_0-9\.\-]+/
 
     %import common.NUMBER
@@ -133,7 +143,7 @@ ST_GRAMMAR = r"""
     %ignore WS
     %ignore CPP_COMMENT
     %ignore C_COMMENT
-
+    
     ST_COMMENT: "(*" /(.|\n)*?/ "*)"
     %ignore ST_COMMENT
 """
