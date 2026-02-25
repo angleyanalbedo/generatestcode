@@ -1,15 +1,12 @@
 import sys
-import os
 from pathlib import Path
 from tqdm import tqdm
 
-# 确保能找到 src
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.stparser.st_parser import STParser
 
 
-def run_folder_test(input_folder: str):
+def test_parser(input_folder: str):
     parser = STParser()
     input_path = Path(input_folder)
 
@@ -78,10 +75,10 @@ def run_folder_test(input_folder: str):
 
 if __name__ == "__main__":
     # 你可以在这里直接修改你的 ST 源码文件夹路径
-    TARGET_FOLDER = "./st_source_code"
+    TARGET_FOLDER = "./resource/st_source_code"
 
     # 或者通过命令行参数传入
     if len(sys.argv) > 1:
         TARGET_FOLDER = sys.argv[1]
 
-    run_folder_test(TARGET_FOLDER)
+    test_parser(TARGET_FOLDER)
