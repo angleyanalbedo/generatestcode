@@ -3,7 +3,7 @@
 from __future__ import annotations
 import pickle
 from pathlib import Path
-from ..pdg.pdg_builder import ProgramDependenceGraph   # 你的 PDG 类
+from stslicer.pdg import ProgramDependenceGraph   # 你的 PDG 类
 
 CACHE_VER = 1      # 以后 PDG 结构变了就 +1，老缓存自动失效
 

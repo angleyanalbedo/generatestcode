@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from stparser import STParser
 from stanalyzer.lark_analyzer import STSemanticAnalyzer
-from stparser.unparser import STUnparser
+from stunparser.unparser import STUnparser
 from strewriter import STRewriter
 from utils import auto_repair
 
