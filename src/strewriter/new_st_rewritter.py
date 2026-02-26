@@ -1,4 +1,5 @@
 import random
+import string
 from typing import Any, List
 
 class STRewriter:
@@ -58,19 +59,39 @@ class STRewriter:
                     # 交换 THEN 和 ELSE 分支
                     new_node["then_body"], new_node["else_body"] = new_node["else_body"], new_node["then_body"]
 
-            # --- 策略 C: 变量名混淆 (Variable Obfuscation) ---
+            # --- 策略 C: 真正的变量名一致性混淆 (True Variable Obfuscation) ---
             elif expr_type == "var":
                 name = new_node.get("name", "")
 
-                # 如果在强制重命名映射中，优先替换
+                # 1. 如果在强制重命名映射中，优先绝对替换
                 if name in self.rename_map:
                     new_node["name"] = self.rename_map[name]
 
-                # 否则，如果是 augment 模式，随机加前缀
-                elif self.mode == "augment" and random.random() > 0.7:
-                    # 简单过滤：全大写的通常是常量或系统字面量，不混淆；防止重复加前缀
-                    if not name.isupper() and not name.startswith("var_"):
-                        new_node["name"] = f"var_{name}"
+                # 2. 动态一致性混淆
+                elif self.mode == "augment":
+                    # 过滤掉全局大写常量 (如 TRUE, FALSE, PI) 和极短的单字母变量
+                    if not name.isupper() and len(name) > 1:
+
+                        # 初始化当前 AST 树的动态混淆字典 (保证一次重写过程中的一致性)
+                        if not hasattr(self, "_dynamic_rename_map"):
+                            self._dynamic_rename_map = {}
+
+                        # 如果这个变量已经有了命运 (已被混淆，或决定不混淆)，直接使用之前的决定
+                        if name in self._dynamic_rename_map:
+                            new_node["name"] = self._dynamic_rename_map[name]
+                        else:
+                            # 第一次遇到这个变量，70% 概率将它变成毫无意义的混淆名
+                            if random.random() > 0.3:
+                                # 生成随机后缀，例如 tmp_4fA2
+                                suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=4))
+                                fake_name = f"tmp_{suffix}"
+
+                                # 记录在案，保证后续遇到的同名变量全都变成这个假名字
+                                self._dynamic_rename_map[name] = fake_name
+                                new_node["name"] = fake_name
+                            else:
+                                # 决定不混淆它，也要记录下来，防止下次遍历到它时又变卦
+                                self._dynamic_rename_map[name] = name
 
             return new_node
 
