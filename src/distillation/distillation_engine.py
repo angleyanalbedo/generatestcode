@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Set, Optional, Any
 
 from src.llmclient import LLMClient
+from src.stvailder import FastValidator
 
 # 尝试导入异步文件库
 try:
@@ -209,6 +210,7 @@ class AsyncSTDistillationEngine:
         self.use_strict = use_strict
 
         self.validator = STValidator()
+        self.fast_validator = FastValidator()
         # 1. 组合：实例化 IO 处理器
         self.io = IOHandler(config)
 
@@ -233,7 +235,7 @@ class AsyncSTDistillationEngine:
         if self.use_strict:
             return self.validator.validate_v2(code)
         else:
-            return self.validator.validate(code)
+            return self.fast_validator.validate(code)
 
 
     # --- LLM 交互步骤 ---
