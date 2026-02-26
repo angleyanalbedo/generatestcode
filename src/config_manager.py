@@ -1,7 +1,8 @@
 import yaml
 import os
+from dotenv import load_dotenv
 
-
+load_dotenv()
 class ConfigManager:
     def __init__(self, config_path="config.yaml"):
         # 加载 YAML
@@ -34,7 +35,7 @@ class ConfigManager:
     def api_key(self) -> str:
         # 本地 vLLM 通常不需要 Key，返回默认值即可
         # 如果是 OpenAI，这里可以从环境变量 os.getenv 读取
-        return "EMPTY"
+        return os.getenv("OPENAI_API_KEY", "EMPTY")
 
         # --- File Paths Section ---
 
