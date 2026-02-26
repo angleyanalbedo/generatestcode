@@ -1,7 +1,7 @@
 from typing import List,Dict,Any
 
-from stparser.anltr4.generated.IEC61131Parser import IEC61131Parser
-from stparser.anltr4.generated.IEC61131ParserVisitor import IEC61131ParserVisitor
+from src.stparser.anltr4.generated.IEC61131Parser import IEC61131Parser
+from src.stparser.anltr4.generated.IEC61131ParserVisitor import IEC61131ParserVisitor
 
 # ---------------------------------------------------------
 # 2. 自定义 AST 构建器 (Visitor 模式)

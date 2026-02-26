@@ -1,6 +1,6 @@
 import re
 
-from stparser import STParser
+from ..stparser import STParser
 
 
 # --- 校验器 ---

@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Set, Optional, Any
 
-from llmclient import LLMClient
+from src.llmclient import LLMClient
 
 # 尝试导入异步文件库
 try:
@@ -18,8 +18,8 @@ except ImportError:
     HAS_AIOFILES = False
 
 # 假设这些是你已经定义的外部类
-from prompt_manager import PromptManager
-from config_manager import ConfigManager
+from src.prompt_manager import PromptManager
+from src.config_manager import ConfigManager
 from src.stvailder.stvailder import STValidator
 
 

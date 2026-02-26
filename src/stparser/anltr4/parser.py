@@ -1,10 +1,10 @@
 from antlr4 import InputStream, CommonTokenStream
 from antlr4.error.ErrorListener import ErrorListener
 
-from stparser.anltr4.ast.builder import STAstBuilder
-from utils import auto_repair
-from stparser.anltr4.generated.IEC61131Lexer import IEC61131Lexer
-from stparser.anltr4.generated.IEC61131Parser import IEC61131Parser
+from src.stparser.anltr4.ast.builder import STAstBuilder
+from src.utils import auto_repair
+from src.stparser.anltr4.generated.IEC61131Lexer import IEC61131Lexer
+from src.stparser.anltr4.generated.IEC61131Parser import IEC61131Parser
 
 
 # ---------------------------------------------------------
