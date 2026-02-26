@@ -2,8 +2,8 @@ import re
 
 from lark import Lark, exceptions
 
-from stparser.lark.gamera import ST_GRAMMAR
-from stanalyzer.lark_analyzer import STSemanticAnalyzer
+from ..lark.gamera import ST_GRAMMAR
+from src.stanalyzer.lark_analyzer import STSemanticAnalyzer
 import logging
 
 logger = logging.getLogger(__name__)

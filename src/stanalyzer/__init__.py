@@ -1,0 +1,1 @@
+from .new_analyzer import DependencyAnalyzer

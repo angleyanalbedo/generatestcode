@@ -5,7 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from ..stparser import STParser
-from ..stanalyzer.lark_analyzer import STSemanticAnalyzer
+from ..stanalyzer import DependencyAnalyzer
 from ..stunparser.unparser import STUnparser
 from ..strewriter import STRewriter
 from ..utils import auto_repair
@@ -20,7 +20,7 @@ class DataAugmenter:
 
         # 初始化核心引擎
         self.parser = STParser()
-        self.analyzer = STSemanticAnalyzer()
+        self.analyzer = DependencyAnalyzer()
         self.rewriter = STRewriter(analyzer=self.analyzer, mode="augment")
         self.unparser = STUnparser()
 
