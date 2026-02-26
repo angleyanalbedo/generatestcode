@@ -15,26 +15,37 @@ class STRewriter:
         :param rename_map: 强制重命名映射字典
         :param mode: 'augment' (随机增强) 或 'rename' (仅重命名)
         """
+        self._dynamic_rename_map = None
         self.analyzer = analyzer
         self.rename_map = rename_map or {}
         self.mode = mode
 
     def rewrite(self, node: Any) -> Any:
+        """
+        重写入口。每次处理一个新的完整 POU 时，清空之前的动态混淆记录。
+        """
+        # 如果是顶层列表或带 unit_type 的顶层节点，清空记录，防止不同文件串联混淆
+        if isinstance(node, list) or (isinstance(node, dict) and "unit_type" in node):
+            self._dynamic_rename_map = {}
+
+        return self._rewrite_recursive(node)
+
+    def _rewrite_recursive(self, node: Any) -> Any:
         """递归遍历并变异 AST 节点"""
 
         # 1. 如果是代码块 (语句列表)
         if isinstance(node, list):
-            # 先递归处理内部的每一条语句/节点
-            processed_list = [self.rewrite(item) for item in node]
+            # ✅ 已修复：递归处理内部每一条语句时，必须调用 _rewrite_recursive
+            processed_list = [self._rewrite_recursive(item) for item in node]
             # 然后在当前层级尝试进行指令重排
             return self._reorder_body(processed_list)
 
         # 2. 如果是 AST 节点 (字典)
         if isinstance(node, dict):
-            # 深层遍历：先处理所有子节点 (自底向上变异)
+            # ✅ 已修复：深层遍历时，必须调用 _rewrite_recursive (自底向上变异)
             new_node = {}
             for k, v in node.items():
-                new_node[k] = self.rewrite(v)
+                new_node[k] = self._rewrite_recursive(v)
 
             # 拿到当前节点的类型，开始实施变异策略
             stmt_type = new_node.get("stmt_type")
@@ -73,7 +84,7 @@ class STRewriter:
                     if not name.isupper() and len(name) > 1:
 
                         # 初始化当前 AST 树的动态混淆字典 (保证一次重写过程中的一致性)
-                        if not hasattr(self, "_dynamic_rename_map"):
+                        if not hasattr(self, "_dynamic_rename_map") or self._dynamic_rename_map is None:
                             self._dynamic_rename_map = {}
 
                         # 如果这个变量已经有了命运 (已被混淆，或决定不混淆)，直接使用之前的决定
