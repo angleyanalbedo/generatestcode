@@ -1,9 +1,9 @@
 import asyncio
 
-from llmclient import LLMClient
+from src.llmclient import LLMClient
 from src.distillation.distillation_engine import AsyncSTDistillationEngine
-from prompt_manager import PromptManager
-from config_manager import ConfigManager
+from src.prompt_manager import PromptManager
+from src.config_manager import ConfigManager
 import platform
 
 
