@@ -4,11 +4,11 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from stparser import STParser
-from stanalyzer.lark_analyzer import STSemanticAnalyzer
-from stunparser.unparser import STUnparser
-from strewriter import STRewriter
-from utils import auto_repair
+from ..stparser import STParser
+from ..stanalyzer.lark_analyzer import STSemanticAnalyzer
+from ..stunparser.unparser import STUnparser
+from ..strewriter import STRewriter
+from ..utils import auto_repair
 
 
 class DataAugmenter:

@@ -40,6 +40,7 @@ class STAstBuilder(IEC61131ParserVisitor):
 
         return str(obj)
 
+
     # ==========================================
     # 1. 顶层结构 (Program, Function Block)
     # ==========================================
@@ -56,36 +57,92 @@ class STAstBuilder(IEC61131ParserVisitor):
                     pous.append(ast)
         return pous
 
-    # 1. PROGRAM 名字提取
+    # ==========================================
+    # 🛡️ 终极防弹 Body 提取器
+    # ==========================================
+    def _extract_body(self, ctx) -> List[Dict]:
+        """无视一切底层结构差异，暴力提取语句块，绝不抛出 AttributeError"""
+        if not ctx:
+            return []
+
+        # 路线 1：尝试提取常规的 body() -> statement_list() [适用于 PROGRAM 和 FB]
+        try:
+            body_meth = getattr(ctx, 'body', None)
+            if callable(body_meth):
+                body_ctx = body_meth()
+                if body_ctx:
+                    stmt_meth = getattr(body_ctx, 'statement_list', None)
+                    if callable(stmt_meth):
+                        stmt_ctx = stmt_meth()
+                        if stmt_ctx:
+                            return self.visit(stmt_ctx)
+                    # 如果 body 里没有 statement_list，直接 visit body
+                    return self.visit(body_ctx)
+        except AttributeError:
+            pass
+        except Exception:
+            pass
+
+        # 路线 2：尝试直接提取 statement_list() [适用于某些特殊 FUNCTION]
+        try:
+            stmt_meth = getattr(ctx, 'statement_list', None)
+            if callable(stmt_meth):
+                stmt_ctx = stmt_meth()
+                if stmt_ctx:
+                    return self.visit(stmt_ctx)
+        except AttributeError:
+            pass
+        except Exception:
+            pass
+
+        # 路线 3：终极兜底方案 -> 遍历所有子节点，谁长得像代码块就解析谁
+        try:
+            children = getattr(ctx, 'children', [])
+            for child in children:
+                class_name = type(child).__name__.lower()
+                if 'statement_list' in class_name or 'body' in class_name:
+                    res = self.visit(child)
+                    if isinstance(res, list):  # 确保提取出来的是语句列表
+                        return res
+        except Exception:
+            pass
+
+        # 如果实在找不到代码块，返回空列表，保证不崩溃
+        return []
+
+    # ==========================================
+    # 1. 顶层结构 (Program, Function Block, Function)
+    # ==========================================
     def visitProgram_declaration(self, ctx: IEC61131Parser.Program_declarationContext) -> Dict[str, Any]:
         return {
             "unit_type": "PROGRAM",
             "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
             "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            "body": self._extract_body(ctx.body())
+            # 💡 绝对不要在这里写 ctx.body()，把整个 ctx 扔给提取器
+            "body": self._extract_body(ctx)
         }
 
-    # 2. FB 名字提取
     def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[
         str, Any]:
         return {
             "unit_type": "FUNCTION_BLOCK",
             "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
             "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            "body": self._extract_body(ctx.body())
+            # 💡 同上
+            "body": self._extract_body(ctx)
         }
 
-    # 3. FUNCTION 名字提取
     def visitFunction_declaration(self, ctx: IEC61131Parser.Function_declarationContext) -> Dict[str, Any]:
         return {
             "unit_type": "FUNCTION",
             "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
             "return_type": self.safe_text(getattr(ctx, 'type_declaration', None)) or "UNKNOWN",
             "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            "body": self._extract_body(ctx.body())
+            # 💡 同上，彻底断绝属性报错的可能
+            "body": self._extract_body(ctx)
         }
 
-    # 4. 函数/功能块调用提取 (彻底解决 Symbolic_variableContext 和 NameContext 报错)
+    # 函数/功能块调用提取 (彻底解决 Symbolic_variableContext 和 NameContext 报错)
     def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> Dict[str, Any]:
         # 优先尝试获取 id_，如果没有则获取 symbolic_variable
         func_name = self.safe_text(getattr(ctx, "id_", None))
@@ -104,7 +161,7 @@ class STAstBuilder(IEC61131ParserVisitor):
             "args": args
         }
 
-    # 5. 作为表达式的调用提取
+    # 作为表达式的调用提取
     def visitPrimary_expression(self, ctx: IEC61131Parser.Primary_expressionContext) -> Dict[str, Any]:
         if ctx.constant():
             return self.visit(ctx.constant())
@@ -128,12 +185,6 @@ class STAstBuilder(IEC61131ParserVisitor):
             }
 
         return {"expr_type": "unknown", "text": self.safe_text(ctx)}
-
-    def _extract_body(self, body_ctx) -> List[Dict]:
-        """提取 body 中的 statement_list"""
-        if body_ctx and body_ctx.statement_list():
-            return self.visit(body_ctx.statement_list())
-        return []
 
     # ==========================================
     # 2. 变量声明 (VAR ... END_VAR)

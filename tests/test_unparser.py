@@ -7,7 +7,7 @@ from tqdm import tqdm
 # sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.stparser import STParser
-from src.stparser import STUnparser
+from src.stunparser import STUnparser
 
 def run_unparser_test(input_folder: str, output_folder: str = "../../data/unparsed_output"):
     input_path = Path(input_folder)
