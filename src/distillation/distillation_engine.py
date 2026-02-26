@@ -203,11 +203,11 @@ class AsyncSTDistillationEngine:
     通过组合 (Composition) 持有 IOHandler, ConfigManager, PromptManager。
     """
 
-    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient,use_strict:bool=False):
+    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient):
         self.cfg = config
         self.prompts = prompts
         self.task_queue = asyncio.Queue(maxsize=500)
-        self.use_strict = use_strict
+        self.use_strict = config.use_strict
 
         self.validator = STValidator()
         self.fast_validator = FastValidator()

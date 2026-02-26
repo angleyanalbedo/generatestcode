@@ -68,4 +68,7 @@ class ConfigManager:
     @property
     def backend_type(self) -> str:
         return self._cfg.get('backend', {}).get('type', 'openai')
+    @property
+    def use_strict(self) -> bool:
+        return self._cfg.get('use_strict', False)
 
