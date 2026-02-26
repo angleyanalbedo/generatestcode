@@ -202,10 +202,11 @@ class AsyncSTDistillationEngine:
     通过组合 (Composition) 持有 IOHandler, ConfigManager, PromptManager。
     """
 
-    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient):
+    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient,use_strict:bool=False):
         self.cfg = config
         self.prompts = prompts
         self.task_queue = asyncio.Queue(maxsize=500)
+        self.use_strict = use_strict
 
         self.validator = STValidator()
         # 1. 组合：实例化 IO 处理器
@@ -229,8 +230,10 @@ class AsyncSTDistillationEngine:
         return ""
 
     def _validate_st_syntax(self, code: str) -> tuple[bool, str]:
-        """改为使用lark写的vailder"""
-        return self.validator.validate_v2(code)
+        if self.use_strict:
+            return self.validator.validate_v2(code)
+        else:
+            return self.validator.validate(code)
 
 
     # --- LLM 交互步骤 ---
