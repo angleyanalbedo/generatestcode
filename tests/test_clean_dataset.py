@@ -10,8 +10,8 @@ def test_clean_dataset():
 
 def test_clean_dataset_demo():
     cleaner = STDataCleaner(
-        input_dir="../data/train_data_merged",
-        output_dir="../data/train_data_merged_CLEAN",
+        input_dir="../data/st_dataset_distillation_by_qwen2.5",
+        output_dir="../data/st_dataset_distillation_by_qwen2.5_CLEAN",
         ext=".json"
     )
     cleaner.run()

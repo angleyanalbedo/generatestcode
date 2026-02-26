@@ -24,7 +24,7 @@ class STDataCleaner:
         self.stats = {
             "total_files": 0, "processed_files": 0, "total_samples": 0,
             "golden": 0,  # Matiec 编译通过的真金数据
-            "matiec_error": 0,  # 编译器报错 (高级逻辑错/类型错)
+            "syntax_error": 0,  # 编译器报错 (高级逻辑错/类型错)
             "basic_error": 0,  # 第一层被拦截的低级错误
             "empty": 0  # 纯废话
         }
@@ -38,7 +38,7 @@ class STDataCleaner:
             return {}
         if not isinstance(data, list): return {}
 
-        categorized_data = {"golden": [], "matiec_error": [], "basic_error": [], "empty": []}
+        categorized_data = {"golden": [], "syntax_error": [], "basic_error": [], "empty": []}
 
         for item in data:
             self.stats["total_samples"] += 1
@@ -68,7 +68,7 @@ class STDataCleaner:
                     else:
                         is_valid_s2, msg2 = self.validator.validate_v2(repaired_code)
                     if not is_valid_s2:
-                        status = "matiec_error"
+                        status = "syntax_error"
                         error_reason = msg2
 
             item["st_metadata"] = {"quality": status, "error": error_reason}
@@ -104,7 +104,7 @@ class STDataCleaner:
 
     def print_report(self):
         t = self.stats["total_samples"]
-        g, me, be, e = self.stats["golden"], self.stats["matiec_error"], self.stats["basic_error"], self.stats["empty"]
+        g, me, be, e = self.stats["golden"], self.stats["syntax_error"], self.stats["basic_error"], self.stats["empty"]
 
         print("\n" + "=" * 60)
         if self.use_matiec:

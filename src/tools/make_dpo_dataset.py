@@ -5,7 +5,7 @@ from pathlib import Path
 
 def create_dpo_negatives(error_file_path: str, output_path: str):
     """
-    读取 matiec_error.json，提取其中的 instruction 和 output，
+    读取 syntax_error.json，提取其中的 instruction 和 output，
     将其转换为 DPO 训练所需的格式 (暂缺 chosen，留作后续补全)。
     """
     in_file = Path(error_file_path)
