@@ -1,1 +1,1 @@
-from .st_rewriter import STRewriter
+from .new_st_rewritter import STRewriter
