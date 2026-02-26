@@ -14,6 +14,33 @@ class STAstBuilder(IEC61131ParserVisitor):
     """
 
     # ==========================================
+    # 🌟 核心防雷：万能文本提取器
+    # ==========================================
+    def safe_text(self, obj) -> str:
+        """安全提取文本，彻底解决 Token 和 Context 的 API 冲突"""
+        if obj is None:
+            return ""
+        # 1. 如果它是方法 (比如 ctx.identifier)，先调用它获取对象
+        if callable(obj):
+            try:
+                obj = obj()
+            except:
+                pass
+
+        if obj is None:
+            return ""
+
+        # 2. 如果是 Rule Context，调用 getText()
+        if hasattr(obj, 'getText'):
+            return obj.getText()
+
+        # 3. 如果是 Lexer Token，直接读取 text
+        if hasattr(obj, 'text'):
+            return obj.text
+
+        return str(obj)
+
+    # ==========================================
     # 1. 顶层结构 (Program, Function Block)
     # ==========================================
 
@@ -29,21 +56,78 @@ class STAstBuilder(IEC61131ParserVisitor):
                     pous.append(ast)
         return pous
 
+    # 1. PROGRAM 名字提取
     def visitProgram_declaration(self, ctx: IEC61131Parser.Program_declarationContext) -> Dict[str, Any]:
         return {
             "unit_type": "PROGRAM",
-            "name": ctx.identifier().getText() if ctx.identifier() else "Unnamed",
+            "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
             "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
             "body": self._extract_body(ctx.body())
         }
 
-    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[str, Any]:
+    # 2. FB 名字提取
+    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[
+        str, Any]:
         return {
             "unit_type": "FUNCTION_BLOCK",
-            "name": ctx.identifier().getText() if ctx.identifier() else "Unnamed",
+            "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
             "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
             "body": self._extract_body(ctx.body())
         }
+
+    # 3. FUNCTION 名字提取
+    def visitFunction_declaration(self, ctx: IEC61131Parser.Function_declarationContext) -> Dict[str, Any]:
+        return {
+            "unit_type": "FUNCTION",
+            "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
+            "return_type": self.safe_text(getattr(ctx, 'type_declaration', None)) or "UNKNOWN",
+            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+            "body": self._extract_body(ctx.body())
+        }
+
+    # 4. 函数/功能块调用提取 (彻底解决 Symbolic_variableContext 和 NameContext 报错)
+    def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> Dict[str, Any]:
+        # 优先尝试获取 id_，如果没有则获取 symbolic_variable
+        func_name = self.safe_text(getattr(ctx, "id_", None))
+        if not func_name:
+            func_name = self.safe_text(getattr(ctx, "symbolic_variable", None))
+
+        args = []
+        for pa in ctx.param_assignment():
+            args.append(self.visit(pa))
+        for e in ctx.expression():
+            args.append(self.visit(e))
+
+        return {
+            "stmt_type": "call",
+            "func_name": func_name,
+            "args": args
+        }
+
+    # 5. 作为表达式的调用提取
+    def visitPrimary_expression(self, ctx: IEC61131Parser.Primary_expressionContext) -> Dict[str, Any]:
+        if ctx.constant():
+            return self.visit(ctx.constant())
+        if ctx.v:
+            return self.visit(ctx.v)
+        if ctx.invocation():
+            inv = ctx.invocation()
+
+            func_name = self.safe_text(getattr(inv, "id_", None))
+            if not func_name:
+                func_name = self.safe_text(getattr(inv, "symbolic_variable", None))
+
+            args = []
+            for pa in inv.param_assignment(): args.append(self.visit(pa))
+            for e in inv.expression(): args.append(self.visit(e))
+
+            return {
+                "expr_type": "call",
+                "func_name": func_name,
+                "args": args
+            }
+
+        return {"expr_type": "unknown", "text": self.safe_text(ctx)}
 
     def _extract_body(self, body_ctx) -> List[Dict]:
         """提取 body 中的 statement_list"""
@@ -173,24 +257,6 @@ class STAstBuilder(IEC61131ParserVisitor):
     def visitInvocation_statement(self, ctx: IEC61131Parser.Invocation_statementContext) -> Dict[str, Any]:
         return self.visit(ctx.invocation())
 
-    def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> Dict[str, Any]:
-        # 函数或功能块调用
-        if hasattr(ctx, "id_") and ctx.id_:
-            func_name = ctx.id_.getText()
-        else:
-            func_name = ctx.symbolic_variable().getText()
-
-        args = []
-        for pa in ctx.param_assignment():
-            args.append(self.visit(pa))
-        for e in ctx.expression():
-            args.append(self.visit(e))
-
-        return {
-            "stmt_type": "call",
-            "func_name": func_name,
-            "args": args
-        }
 
     def visitParam_assignment(self, ctx: IEC61131Parser.Param_assignmentContext):
         if ctx.v:
@@ -274,16 +340,6 @@ class STAstBuilder(IEC61131ParserVisitor):
             "name": ctx.getText()
         }
 
-    def visitFunction_declaration(self, ctx: IEC61131Parser.Function_declarationContext) -> Dict[str, Any]:
-        # FUNCTION 有返回值类型，通常跟在名字后面
-        return {
-            "unit_type": "FUNCTION",
-            "name": ctx.identifier().getText() if ctx.identifier() else "Unnamed",
-            "return_type": ctx.type_declaration().getText() if hasattr(ctx,
-                                                                       'type_declaration') and ctx.type_declaration() else "UNKNOWN",
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            "body": self._extract_body(ctx.body())
-        }
 
     def visitRepeat_statement(self, ctx: IEC61131Parser.Repeat_statementContext) -> Dict[str, Any]:
         return {
@@ -300,23 +356,3 @@ class STAstBuilder(IEC61131ParserVisitor):
 
     def visitContinue_statement(self, ctx: IEC61131Parser.Continue_statementContext) -> Dict[str, Any]:
         return {"stmt_type": "continue"}
-
-    def visitPrimary_expression(self, ctx: IEC61131Parser.Primary_expressionContext) -> Dict[str, Any]:
-        if ctx.constant():
-            return self.visit(ctx.constant())
-        if ctx.v:
-            return self.visit(ctx.v)
-        if ctx.invocation():
-            inv = ctx.invocation()
-            func_name = inv.id_.getText() if hasattr(inv, "id_") and inv.id_ else inv.symbolic_variable().getText()
-            args = []
-            for pa in inv.param_assignment(): args.append(self.visit(pa))
-            for e in inv.expression(): args.append(self.visit(e))
-
-            # 返回作为表达式的调用
-            return {
-                "expr_type": "call",
-                "func_name": func_name,
-                "args": args
-            }
-        return {"expr_type": "unknown", "text": ctx.getText()}
