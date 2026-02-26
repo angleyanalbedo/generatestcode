@@ -4,15 +4,17 @@ from pathlib import Path
 from tqdm import tqdm
 
 from src.strewriter import STRewriter
+from stanalyzer.analyzer import DependencyAnalyzer
 
 # 确保能找到 src 模块
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.stparser import STParser, STUnparser
+from src.stparser import STParser
+from src.stunparser import STUnparser
 
 
 
-def run_rewriter_test(input_folder: str, output_folder: str = "../../data/rewritten_output"):
+def run_rewriter_test(input_folder: str, output_folder: str = "../data/rewritten_output"):
     input_path = Path(input_folder)
     out_path = Path(output_folder)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -32,7 +34,8 @@ def run_rewriter_test(input_folder: str, output_folder: str = "../../data/rewrit
 
     # 初始化你的流水线组件
     parser = STParser()
-    rewriter = STRewriter()
+    analyzer = DependencyAnalyzer()
+    rewriter = STRewriter(analyzer=analyzer,mode="augment")
     unparser = STUnparser()
 
     stats = {
@@ -114,6 +117,6 @@ def run_rewriter_test(input_folder: str, output_folder: str = "../../data/rewrit
 
 
 def test_rewritter():
-    input_folder = "../../resource/st_source_code"
-    output_folder = "../../data/rewritten_output"
+    input_folder = "../resource/st_source_code"
+    output_folder = "../data/rewritten_output"
     run_rewriter_test(input_folder, output_folder)
