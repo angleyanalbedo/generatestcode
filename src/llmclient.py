@@ -1,96 +1,89 @@
 import json
 import re
 import logging
+import asyncio
 from openai import AsyncOpenAI
 from typing import List, Dict, Any, Union
 
 logger = logging.getLogger(__name__)
 
-
 class LLMClient:
-    def __init__(self, api_key: str, base_url: str, model: str, backend_type: str = "openai"):
-        """
-        统一的大模型客户端
-        :param backend_type: 'openai', 'tgi', 'llamacpp', 'vllm'
-        """
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=120.0)
+    def __init__(self, api_keys: Union[str, List[str]], base_url: str, model: str, backend_type: str = "openai"):
+        if isinstance(api_keys, str): api_keys = [api_keys]
+        if not api_keys: raise ValueError("❌ 必须提供至少一个 API Key！")
+
+        self.api_keys = api_keys
+        self.base_url = base_url
         self.model = model
         self.backend_type = backend_type.lower()
+        
+        self.current_key_index = 0
+        self.client_lock = asyncio.Lock()
+        self._init_active_client()
+        logger.info(f"🚀 启动顺序榨干模式！共载入 {len(self.api_keys)} 个 Key。")
+
+    def _init_active_client(self):
+        current_key = self.api_keys[self.current_key_index]
+        self.client = AsyncOpenAI(api_key=current_key, base_url=self.base_url, timeout=120.0)
+        logger.info(f"🔄 当前服役 Key: {current_key[:8]}*** (第 {self.current_key_index + 1}/{len(self.api_keys)} 个)")
+
+    async def _handle_key_death(self, failed_index: int):
+        async with self.client_lock:
+            if self.current_key_index == failed_index:
+                self.current_key_index += 1
+                if self.current_key_index >= len(self.api_keys):
+                    logger.error("🚨 弹尽粮绝！所有的 API Key 都已耗尽！")
+                    raise Exception("ALL_KEYS_EXHAUSTED")
+                self._init_active_client()
 
     def _clean_json_content(self, raw_text: str) -> str:
-        """从 LLM 输出中提取 JSON（完全使用你之前经过验证的鲁棒代码）"""
-        cleaned = re.sub(r"```json|```", "", raw_text, flags=re.IGNORECASE).strip()
-        # 优先匹配对象
-        start, end = cleaned.find('{'), cleaned.rfind('}')
-        if start != -1 and end != -1:
-            return cleaned[start:end + 1]
-        # 其次匹配数组
+        if "</think>" in raw_text: raw_text = raw_text.split("</think>")[-1]
+        cleaned = re.sub(r"```(?:json)?|```", "", raw_text, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r',\s*]', ']', cleaned)
+        cleaned = re.sub(r',\s*}', '}', cleaned)
+
+        start_dict, end_dict = cleaned.find('{'), cleaned.rfind('}')
         start_list, end_list = cleaned.find('['), cleaned.rfind(']')
+
+        def try_parse(chunk):
+            try: json.loads(chunk); return True
+            except: return False
+
+        if start_dict != -1 and end_dict != -1:
+            dict_str = cleaned[start_dict:end_dict + 1]
+            if try_parse(dict_str): return dict_str
+        if start_list != -1 and end_list != -1:
+            list_str = cleaned[start_list:end_list + 1]
+            if try_parse(list_str): return list_str
+        if start_dict != -1 and end_dict != -1 and (start_list == -1 or start_dict < start_list):
+            return cleaned[start_dict:end_dict + 1]
         if start_list != -1 and end_list != -1:
             return cleaned[start_list:end_list + 1]
-        return ""
+        return cleaned
 
-    async def chat(self, messages: List[Dict], temperature: float = 0.7, json_mode: bool = False) -> Union[
-        str, Dict, List]:
-        """核心生成接口，根据后端自动适配参数"""
-        kwargs = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature
-        }
+    async def chat(self, messages: List[Dict], temperature: float = 0.7, json_mode: bool = False) -> Union[str, Dict, List]:
+        kwargs = {"model": self.model, "messages": messages, "temperature": temperature, "max_tokens": 8192}
+        if json_mode and self.backend_type == "tgi": kwargs["extra_body"] = {"repetition_penalty": 1.05}
 
-        # --- 针对不同后端的适配策略 ---
-        if json_mode:
-            if self.backend_type == "openai":
-                # OpenAI 原生支持严格的 JSON Mode
-                kwargs["response_format"] = {"type": "json_object"}
-            elif self.backend_type == "llamacpp":
-                # Llama.cpp 如果配置了 JSON Schema，可以在这里透传
-                pass
-            elif self.backend_type == "tgi":
-                # TGI 通常通过 Prompt 约束，这里可以加一点重复惩罚防止 JSON 崩坏
-                kwargs["extra_body"] = {"repetition_penalty": 1.05}
-
-        try:
-            # 统一调用
-            resp = await self.client.chat.completions.create(**kwargs)
-            content = resp.choices[0].message.content
-
-            # 如果要求返回 JSON，自动清洗并解析
-            if json_mode:
-                cleaned_str = self._clean_json_content(content)
-                if not cleaned_str:
-                    logger.warning(f"⚠️ 无法从输出中提取 JSON。原始输出: {content[:100]}")
-                    return {}  # 或者返回 []
-                return json.loads(cleaned_str)
-
-            # 否则直接返回字符串
-            return content
-
-        except Exception as e:
-            logger.error(f"❌ LLMClient Chat Error ({self.backend_type}): {str(e)}")
-            raise e
-
-    async def brainstorm(self, prompt: str, count: int = 1) -> List[Any]:
-        """简化的生成接口（直接返回解析好的 JSON 数组/对象）"""
-        try:
-            # 明确要求模型返回 JSON 数组格式
-            system_prompt = f"You must output a JSON array containing exactly {count} items. Do not output any other text."
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ]
-
-            # 直接调用 chat 并开启 json_mode
-            result = await self.chat(messages, temperature=0.9, json_mode=True)
-
-            # 容错处理：确保返回的是列表
-            if isinstance(result, list):
-                return result
-            elif isinstance(result, dict) and len(result) > 0:
-                # 有些模型可能会用 {"tasks": [...]} 包裹
-                return next(iter(result.values()))
-            return []
-        except Exception as e:
-            logger.error(f"❌ Brainstorm Error: {str(e)}")
-            return []
+        max_internal_retries = len(self.api_keys) + 1 
+        for _ in range(max_internal_retries):
+            attempt_index = self.current_key_index 
+            try:
+                resp = await self.client.chat.completions.create(**kwargs)
+                content = resp.choices[0].message.content
+                if json_mode:
+                    cleaned_str = self._clean_json_content(content)
+                    if not cleaned_str: return {}
+                    return json.loads(cleaned_str)
+                return content
+            except Exception as e:
+                error_msg = str(e).lower()
+                death_keywords = ["429", "rate limit", "too many requests", "401", "403", "invalid token", "insufficient", "quota", "balance"]
+                if any(k in error_msg for k in death_keywords):
+                    logger.warning(f"⚠️ Key 触发额度限制! 准备无缝切换下一个...")
+                    await self._handle_key_death(attempt_index)
+                    await asyncio.sleep(1.5)
+                    continue
+                else:
+                    raise e
+        raise Exception("内部重试次数耗尽，未能成功获取结果。")
