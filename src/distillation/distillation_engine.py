@@ -11,6 +11,7 @@ from src.prompt_manager import PromptManager
 from src.config_manager import ConfigManager
 # 🟢 引入你早期的正则验证器 (注意保持你的实际路径拼写 stvailder)
 from src.stvailder.stvailder import STValidator
+from stvailder import FastValidator
 
 try:
     import aiofiles
@@ -152,6 +153,7 @@ class AsyncSTDistillationEngine:
 
         # 🟢 纯粹的正则轻量级校验器
         self.validator = STValidator()
+        self.fast_validator = FastValidator()
 
         self.io = IOHandler(config)
         self.llm_client = client
@@ -161,8 +163,10 @@ class AsyncSTDistillationEngine:
 
     def _validate_st_syntax(self, code: str) -> tuple[bool, str]:
         """封装校验调用，保持代码整洁"""
-        # 调用你的正则验证器（如果你的验证器核心方法叫 validate_v2，请自行修改）
-        return self.validator.validate(code)
+        if self.use_strict:
+            return self.validator.validate(code)
+        else:
+            return self.fast_validator.validate(code)
 
     async def _step_brainstorm(self) -> List[str]:
         """生成新的任务 Idea"""

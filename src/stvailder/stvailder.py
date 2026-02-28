@@ -47,7 +47,7 @@ class STValidator:
                 return False, f"Structural imbalance: {start}({start_count}) vs {end}({end_count})"
         return True, "Success"
 
-    def validate(self, code):
+    def validate_deprecated(self, code):
         # 1. 基础语法：禁止使用 = 进行赋值 (ST 必须使用 :=)
         # 排除掉注释后的内容进行检查
         clean_code = re.sub(r"//.*|(\(\*.*?\*\))", "", code, flags=re.DOTALL)
@@ -96,7 +96,7 @@ class STValidator:
                 used.update(self._extract_used_vars(body_element["body"]))
         return used
 
-    def validate_v2(self, code: str) -> tuple[bool, str]:
+    def validate(self, code: str) -> tuple[bool, str]:
         # 1. 语法校验 (Syntax Check)
 
         # 获取结构化数据 (Semantic Analysis)
