@@ -8,6 +8,10 @@ from typing import List, Dict, Any, Union
 logger = logging.getLogger(__name__)
 
 class LLMClient:
+    """
+           统一的大模型客户端
+           :param backend_type: 'openai', 'tgi', 'llamacpp', 'vllm'
+           """
     def __init__(self, api_keys: Union[str, List[str]], base_url: str, model: str, backend_type: str = "openai"):
         if isinstance(api_keys, str): api_keys = [api_keys]
         if not api_keys: raise ValueError("❌ 必须提供至少一个 API Key！")
