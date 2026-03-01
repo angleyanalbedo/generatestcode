@@ -31,6 +31,7 @@ logger = logging.getLogger("DistillEngine")
 class IOHandler:
     """【组件化】IO 处理器：负责所有的文件读写操作、内存去重逻辑和 Golden Memory 维护。"""
     def __init__(self, config: ConfigManager):
+        
         self.cfg = config
         
         self.output_file = getattr(config, 'output_file', 'data/st_dataset_local_part.jsonl')
@@ -40,6 +41,11 @@ class IOHandler:
         self.error_log_file = getattr(config, 'error_log_file', 'data/error_records.jsonl')
         self.failed_file = getattr(config, 'failed_file', 'data/failed_tasks.jsonl')
 
+        # 🟢 新增 1：设置待办事项记事本的路径和缓存集合
+        self.pending_file = 'data/pending_tasks.txt'
+        self.unprocessed_pending: Set[str] = set()
+
+        self.io_lock = asyncio.Lock()
         self.io_lock = asyncio.Lock()
         self.golden_lock = asyncio.Lock()
 
@@ -67,6 +73,19 @@ class IOHandler:
 
         logger.info(f"📂 [Storage] 去重索引库构建完成，共计: {count} 条历史任务。")
 
+        # 🟢 新增 2：读取待办记事本，过滤掉已经完成的，剩下的就是断点续传的任务
+        if os.path.exists(self.pending_file):
+            try:
+                with open(self.pending_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        task = line.strip()
+                        if task and task not in self.existing_tasks:
+                            self.unprocessed_pending.add(task)
+                if self.unprocessed_pending:
+                    logger.info(f"📝 [Resume] 发现 {len(self.unprocessed_pending)} 个未完成的待办任务，准备恢复...")
+            except Exception as e:
+                logger.warning(f"读取待办任务出错: {e}")
+
         if self.golden_file and os.path.exists(self.golden_file):
             try:
                 with open(self.golden_file, 'r', encoding='utf-8') as f:
@@ -92,6 +111,18 @@ class IOHandler:
             if len(self.golden_examples) > 50: 
                 self.golden_examples.pop(0)
             await self._write_json(self.golden_file, self.golden_examples, mode='w')
+    # 🟢 新增 3：把新构思的题目追加写入 txt 记事本
+    async def save_pending_tasks(self, tasks: List[str]):
+        if not tasks: return
+        os.makedirs(os.path.dirname(self.pending_file), exist_ok=True)
+        async with self.io_lock:
+            if HAS_AIOFILES:
+                async with aiofiles.open(self.pending_file, 'a', encoding='utf-8') as f:
+                    for t in tasks: await f.write(t + "\n")
+            else:
+                with open(self.pending_file, 'a', encoding='utf-8') as f:
+                    for t in tasks: f.write(t + "\n")
+
 
     async def save_success(self, data: Dict):
         await self._write_line(self.output_file, data)
@@ -161,6 +192,13 @@ class AsyncSTDistillationEngine:
         self.semaphore = asyncio.Semaphore(config.max_concurrency)
         self.running_tasks = set()
 
+        # 🟢 新增 4：启动时，把待办任务直接塞进内存缓冲池
+        for task in self.io.unprocessed_pending:
+            try:
+                self.task_queue.put_nowait(task)
+            except asyncio.QueueFull:
+                break
+
     def _validate_st_syntax(self, code: str) -> tuple[bool, str]:
         """封装校验调用，保持代码整洁"""
         if self.use_strict:
@@ -194,13 +232,21 @@ class AsyncSTDistillationEngine:
     async def _task_producer(self):
         """后台生产者：不停地构思新题目"""
         while self.io.current_count() < self.cfg.target_count:
-            if self.task_queue.qsize() < 500:
+            # 注意这里把 500 改成了 400，留点缓冲空间
+            if self.task_queue.qsize() < 400:
                 new_tasks = await self._step_brainstorm()
+                
+                # 🟢 新增 5：专门把不重复的新题目收集起来，不仅放进内存，还存进 txt
+                valid_new_tasks = []
                 for t in new_tasks:
                     if not await self.io.is_duplicate(t):
+                        valid_new_tasks.append(t)
                         await self.task_queue.put(t)
+                
+                if valid_new_tasks:
+                    await self.io.save_pending_tasks(valid_new_tasks)
             else:
-                await asyncio.sleep(1)
+                await asyncio.sleep(2)
 
     async def _step_evolve(self, base_task: str) -> str:
         """任务进化"""
