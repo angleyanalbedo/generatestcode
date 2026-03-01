@@ -82,13 +82,49 @@ class LLMClient:
                     return json.loads(cleaned_str)
                 return content
             except Exception as e:
-                error_msg = str(e).lower()
-                death_keywords = ["429", "rate limit", "too many requests", "401", "403", "invalid token", "insufficient", "quota", "balance"]
-                if any(k in error_msg for k in death_keywords):
-                    logger.warning(f"⚠️ Key 触发额度限制! 准备无缝切换下一个...")
+                # 🟢 1. 提取并保留原始错误信息，转小写用于精准判定
+                raw_error = str(e)
+                error_msg = raw_error.lower()
+                
+                # 🔴 2. 极其严格的“真·死刑”关键词（无效、未授权、欠费）
+                # 遇到这些才真正切 Key！
+                fatal_keywords = [
+                    "401", "unauthorized", 
+                    "invalid api key", "incorrect api key", "invalid_api_key",
+                    "insufficient", "quota", "balance", "arrears", "suspended"
+                ]
+                
+                # 🟡 3. 只是并发太高导致的“临时限流”
+                # 遇到这些坚决不换 Key，原地休眠！
+                rate_limit_keywords = [
+                    "429", "rate limit", "too many requests"
+                ]
+                
+                # --- 开始三路分流判定 ---
+                
+                if any(k in error_msg for k in fatal_keywords):
+                    safe_key = f"{self.api_keys[attempt_index][:8]}***"
+                    # 打印原话留证
+                    logger.error(f"💀 [判处死刑-原话]: {raw_error}")
+                    logger.warning(f"🔄 Key [{safe_key}] 彻底无效或欠费! 准备无缝切换下一个...")
+                    
+                    # 触发换 Key
                     await self._handle_key_death(attempt_index)
-                    await asyncio.sleep(1.5)
-                    continue
+                    await asyncio.sleep(1)
+                    continue  # 进入下一轮循环，用新 Key 重新请求
+                    
+                elif any(k in error_msg for k in rate_limit_keywords):
+                    # 动态指数退避休眠：3秒, 6秒, 9秒...
+                    wait_time = 3 * (_ + 1) 
+                    logger.info(f"⏳ 触发并发限流(429)，休眠 {wait_time} 秒后继续死磕当前 Key...")
+                    
+                    await asyncio.sleep(wait_time)
+                    continue  # 核心！原地进入下一轮循环，继续死磕老 Key
+                    
                 else:
+                    # 🟢 其他所有报错（比如 502网关错误、网络超时等）
+                    # 抛给外层引擎去重试，不切 Key
+                    logger.error(f"❌ 遇到普通网络/平台报错 (不切Key): {raw_error[:150]}")
                     raise e
-        raise Exception("内部重试次数耗尽，未能成功获取结果。")
+                    
+        raise Exception("🚨 内部底层重试次数耗尽，所有 Key 均无法正常工作！")
