@@ -12,13 +12,14 @@ class LLMClient:
            统一的大模型客户端
            :param backend_type: 'openai', 'tgi', 'llamacpp', 'vllm'
            """
-    def __init__(self, api_keys: Union[str, List[str]], base_url: str, model: str, backend_type: str = "openai"):
+    def __init__(self, api_keys: Union[str, List[str]], base_url: str, model: str, backend_type: str = "openai",time_out:int = 120.0):
         if isinstance(api_keys, str): api_keys = [api_keys]
         if not api_keys: raise ValueError("❌ 必须提供至少一个 API Key！")
 
         self.api_keys = api_keys
         self.base_url = base_url
         self.model = model
+        self.time_out = time_out
         self.backend_type = backend_type.lower()
         
         self.current_key_index = 0
@@ -28,7 +29,7 @@ class LLMClient:
 
     def _init_active_client(self):
         current_key = self.api_keys[self.current_key_index]
-        self.client = AsyncOpenAI(api_key=current_key, base_url=self.base_url, timeout=120.0)
+        self.client = AsyncOpenAI(api_key=current_key, base_url=self.base_url, timeout=self.time_out)
         logger.info(f"🔄 当前服役 Key: {current_key[:8]}*** (第 {self.current_key_index + 1}/{len(self.api_keys)} 个)")
 
     async def _handle_key_death(self, failed_index: int):
