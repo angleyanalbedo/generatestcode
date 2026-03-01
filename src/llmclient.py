@@ -91,7 +91,8 @@ class LLMClient:
                 fatal_keywords = [
                     "401", "unauthorized", 
                     "invalid api key", "incorrect api key", "invalid_api_key",
-                    "insufficient", "quota", "balance", "arrears", "suspended"
+                    "insufficient", "quota", "balance", "arrears", "suspended",
+                    "RPM limit exceeded","Please complete identity verification to lift the restriction"
                 ]
                 
                 # 🟡 3. 只是并发太高导致的“临时限流”
