@@ -286,7 +286,7 @@ class AsyncSTDistillationEngine:
             for attempt in range(max_retries):
                 try:
                     # --- 生成阶段 ---
-                    response = await self.llm_client.chat(messages=messages, temperature=0.5, json_mode=True)
+                    response = await self.llm_client.chat(messages=messages, temperature=0.1, json_mode=True)
                     if not isinstance(response, dict):
                         raise ValueError("Model returned invalid JSON structure.")
                         
