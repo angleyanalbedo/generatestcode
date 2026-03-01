@@ -11,7 +11,7 @@ from src.prompt_manager import PromptManager
 from src.config_manager import ConfigManager
 # 🟢 引入你早期的正则验证器 (注意保持你的实际路径拼写 stvailder)
 from src.stvailder.stvailder import STValidator
-from stvailder import FastValidator
+from src.stvailder import FastValidator
 
 try:
     import aiofiles
