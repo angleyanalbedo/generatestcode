@@ -1,5 +1,5 @@
 # ==========================================
-# ST 代码生成器 - 提示词配置文件
+# ST 代码生成器 - 提示词配置文件 (DeepSeek-V3.2 专版)
 # ==========================================
 
 # 1. 系统级设定 (System Prompt)
@@ -12,6 +12,12 @@ system_prompt: |
   3. COMPATIBILITY: Do NOT use dynamic arrays. Use fixed-size arrays.
   4. TIME INTEGRATION: For physics, prefer 'CycleTime' input over system TIME().
   5. FORMAT: Use 'FUNCTION_BLOCK', 'VAR', 'END_VAR'.
+  
+  CRITICAL JSON FORMATTING RULES FOR THIS SESSION:
+  - You are communicating with an automated JSON parser.
+  - NEVER use raw physical newlines inside JSON string values. You MUST use the literal string "\n" for newlines.
+  - NEVER output markdown formatting (like ```json).
+  - SILENCE IS GOLDEN. Do not output ANY text, explanations, or pleasantries outside of the JSON object.
   
   {% if golden_example %}
   [Reference Example]
@@ -27,7 +33,8 @@ brainstorm_template: |
   Brainstorm {{ count }} DISTINCT, SPECIFIC, and INTERMEDIATE-LEVEL IEC 61131-3 Structured Text (ST) programming tasks related to: "{{ topic }}".
   Rules:
   1. Cover real-world scenarios.
-  2. Output ONLY a JSON list of strings.
+  2. Output EXACTLY a raw JSON list of strings. No markdown, no intro, no outro.
+  Example: ["task 1", "task 2"]
 
 # 3. 任务进化策略 (Evol-Instruct)
 evolution_strategies:
@@ -36,11 +43,19 @@ evolution_strategies:
   - "Make specific to Pharmaceutical industry (GAMP5 standards), ensuring data integrity. Task: {{ task }}"
   - "Increase reasoning complexity: Implement using a robust State Machine. Task: {{ task }}"
 
-# 4. 代码生成指令 (User Prompt)
+# 4. 代码生成指令 (User Prompt) - 核心镇妖符所在
 generation_template: |
   Task: Write a FUNCTION_BLOCK for: "{{ task }}".
-  Requirements: Strictly IEC 61131-3 ST syntax. Use ':=' for assignment.
-  Output: JSON ONLY (keys: thought, code).
+  Requirements: Strictly IEC 61131-3 ST syntax. Use ':=' for assignment. Every statement MUST end with ';'.
+  
+  OUTPUT FORMAT MANDATE:
+  You must output exactly ONE valid JSON object.
+  {"thought": "your brief reasoning", "code": "the complete ST code"}
+  
+  FATAL ERROR PREVENTION (READ CAREFULLY):
+  1. The "code" string MUST be a single line. Replace ALL physical line breaks in your ST code with the literal characters '\n'.
+  2. Escape ALL double quotes inside the ST code with '\"'.
+  3. DO NOT wrap the output in ```json or ``` tags. Just output the raw { ... } object.
 
 # 5. AI 审查 (Critique)
 critique_template: |
@@ -52,6 +67,8 @@ critique_template: |
   Checklist:
   1. Is the logic actually solving the task?
   2. Are all used variables declared in VAR?
-  3. Is it safe (no infinite loops)?
+  3. Is it safe (no infinite loops, division by zero handled)?
   
-  Output JSON ONLY: {"passed": boolean, "reason": "short explanation"}
+  OUTPUT FORMAT:
+  Output a raw JSON object ONLY: {"passed": boolean, "reason": "short explanation"}
+  No markdown. No physical newlines in the "reason" string. No other text.

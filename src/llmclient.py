@@ -12,7 +12,7 @@ class LLMClient:
            统一的大模型客户端
            :param backend_type: 'openai', 'tgi', 'llamacpp', 'vllm'
            """
-    def __init__(self, api_keys: Union[str, List[str]], base_url: str, model: str, backend_type: str = "openai",time_out:int = 120.0):
+    def __init__(self, api_keys: Union[str, List[str]], base_url: str, model: str, backend_type: str = "openai",time_out:int = 300.0):
         if isinstance(api_keys, str): api_keys = [api_keys]
         if not api_keys: raise ValueError("❌ 必须提供至少一个 API Key！")
 
@@ -68,8 +68,13 @@ class LLMClient:
 
     async def chat(self, messages: List[Dict], temperature: float = 0.7, json_mode: bool = False) -> Union[str, Dict, List]:
         kwargs = {"model": self.model, "messages": messages, "temperature": temperature, "max_tokens": 8192}
-        if json_mode and self.backend_type == "tgi": kwargs["extra_body"] = {"repetition_penalty": 1.05}
-
+        
+        # 🟢 新增黑魔法：在 API 物理层面强制锁定 JSON 输出模式
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+            # 保留你原有的 tgi 惩罚机制
+            if self.backend_type == "tgi": 
+                kwargs["extra_body"] = {"repetition_penalty": 1.05}
         max_internal_retries = len(self.api_keys) + 1 
         for _ in range(max_internal_retries):
             attempt_index = self.current_key_index 
@@ -87,18 +92,18 @@ class LLMClient:
                 error_msg = raw_error.lower()
                 
                 # 🔴 2. 极其严格的“真·死刑”关键词（无效、未授权、欠费）
-                # 遇到这些才真正切 Key！
+                # 【修改点】：移除了 "rpm limit exceeded" 等频率限制词
                 fatal_keywords = [
                     "401", "unauthorized", 
                     "invalid api key", "incorrect api key", "invalid_api_key",
-                    "insufficient", "quota", "balance", "arrears", "suspended",
-                    "RPM limit exceeded","Please complete identity verification to lift the restriction"
+                    "insufficient", "quota", "balance", "arrears", "suspended"
                 ]
                 
-                # 🟡 3. 只是并发太高导致的“临时限流”
-                # 遇到这些坚决不换 Key，原地休眠！
+                # 🟡 3. 只是并发太高或频率受限导致的“临时限流”
+                # 【修改点】：把 403 和 rpm 限制加入到了保命名单中
                 rate_limit_keywords = [
-                    "429", "rate limit", "too many requests"
+                    "429", "rate limit", "too many requests",
+                    "rpm limit exceeded", "please complete identity verification", "403"
                 ]
                 
                 # --- 开始三路分流判定 ---
@@ -115,9 +120,14 @@ class LLMClient:
                     continue  # 进入下一轮循环，用新 Key 重新请求
                     
                 elif any(k in error_msg for k in rate_limit_keywords):
-                    # 动态指数退避休眠：3秒, 6秒, 9秒...
-                    wait_time = 3 * (_ + 1) 
-                    logger.info(f"⏳ 触发并发限流(429)，休眠 {wait_time} 秒后继续死磕当前 Key...")
+                    # 【修改点】：针对 RPM (每分钟限制)，强制休眠 60 秒
+                    if "rpm" in error_msg or "403" in error_msg or "identity verification" in error_msg:
+                        wait_time = 60
+                        logger.warning(f"⏳ 触发 RPM 账户频率限制，强制休眠 {wait_time} 秒后继续死磕当前 Key...")
+                    else:
+                        # 普通的并发 429 限制，依然使用动态指数退避休眠：3秒, 6秒, 9秒...
+                        wait_time = 3 * (_ + 1) 
+                        logger.info(f"⏳ 触发并发限流(429)，休眠 {wait_time} 秒后继续死磕当前 Key...")
                     
                     await asyncio.sleep(wait_time)
                     continue  # 核心！原地进入下一轮循环，继续死磕老 Key
