@@ -5,29 +5,30 @@ from typing import List, Dict, Any
 # 1. 严格基于 IEC 61131-10 的 Jinja2 模板
 # ==========================================
 XML_TEMPLATES = {
-    "project": """<?xml version="1.0" encoding="utf-8"?>
-<Project xmlns="www.iec.ch/public/TC65SC65BWG7TF10" 
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-         schemaVersion="1.0">
-  <FileHeader companyName="SyntheticDataGen" productName="LLM_AST_Unparser" productVersion="1.0"/>
-  <ContentHeader name="LLM_Synthetic_Project" creationDateTime="2024-01-01T00:00:00">
-    <CoordinateInfo>
-      <FbdScaling x="1" y="1"/>
-    </CoordinateInfo>
-  </ContentHeader>
-  <Types>
-    <GlobalNamespace>
-      <Program name="{{ pou_name }}">
-        <MainBody>
-          <BodyContent xsi:type="FBD">
-{{ networks_str }}
-          </BodyContent>
-        </MainBody>
-      </Program>
-    </GlobalNamespace>
-  </Types>
-  <Instances/>
-</Project>""",
+    "project_root": """<?xml version="1.0" encoding="utf-8"?>
+    <Project xmlns="www.iec.ch/public/TC65SC65BWG7TF10" 
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+             schemaVersion="1.0">
+      <FileHeader companyName="SyntheticDataGen" productName="LLM_AST_Unparser" productVersion="1.0"/>
+      <ContentHeader name="LLM_Synthetic_Project" creationDateTime="2024-01-01T00:00:00">
+        <CoordinateInfo><FbdScaling x="1" y="1"/></CoordinateInfo>
+      </ContentHeader>
+      <Types>
+        <GlobalNamespace>
+    {{ pous_xml_content }}
+        </GlobalNamespace>
+      </Types>
+      <Instances/>
+    </Project>""",
+
+    # 🌟 POU 单体片段模板 (支持自适应标签)
+    "pou_fragment": """      <{{ unit_type }} name="{{ name }}">
+            <MainBody>
+              <BodyContent xsi:type="FBD">
+    {{ networks_str }}
+              </BodyContent>
+            </MainBody>
+          </{{ unit_type }}>""",
 
     "network": """            <Network evaluationOrder="{{ order }}">
 {{ elements_str }}
@@ -114,28 +115,70 @@ class FBDXmlUnparser:
         return flat_list
 
     # ==========================================
-    # 🌟 入口：多 POU 扫描雷达
+    # 🌟 入口：多 POU 扫描与合并 (修复只返回一个的问题)
     # ==========================================
     def unparse(self, ast_root: Any) -> str:
         pou_nodes = self._find_pou_nodes(ast_root)
         if not pou_nodes:
             raise ValueError("[诊断: 找不到POU] AST 结构中没有 unit_type 节点。")
 
-        valid_pou_xmls = []
+        valid_fragments = []
         last_err = ""
+
         for pou in pou_nodes:
             try:
-                xml = self.unparse_pou(pou)
-                if xml:
-                    valid_pou_xmls.append(xml)
+                # 渲染 POU 片段
+                xml_fragment = self.unparse_pou(pou)
+                if xml_fragment:
+                    valid_fragments.append(xml_fragment)
             except Exception as e:
                 last_err = str(e)
                 continue
 
-        if not valid_pou_xmls:
+        if not valid_fragments:
             raise ValueError(f"[诊断: 所有 POU 被过滤] 扫描了 {len(pou_nodes)} 个 POU，最后报错: {last_err}")
 
-        return valid_pou_xmls[0]
+        # 🚀 核心修复：将所有片段连接并渲染进根模板
+        pous_xml_content = "\n".join(valid_fragments)
+        return self.render("project_root", pous_xml_content=pous_xml_content)
+
+    # ==========================================
+    # 🏗️ POU 解析 (调整为仅返回片段)
+    # ==========================================
+    def unparse_pou(self, pou_node: Dict[str, Any]) -> str:
+        pou_node = self._force_dict(pou_node)
+        pou_name = pou_node.get("name", "GeneratedPOU")
+
+        # 自动识别 unit_type: PROGRAM -> Program, FUNCTION_BLOCK -> FunctionBlock
+        raw_type = pou_node.get("unit_type", "PROGRAM")
+        unit_type_map = {
+            "PROGRAM": "Program",
+            "FUNCTION_BLOCK": "FunctionBlock",
+            "FUNCTION": "Function"
+        }
+        xml_tag = unit_type_map.get(raw_type.upper(), "Program")
+
+        raw_body = pou_node.get("body", [])
+        flat_body = self._flatten_ast(raw_body)
+
+        if not flat_body:
+            return ""  # 静默跳过空 POU
+
+        networks_xml = []
+        for stmt in flat_body:
+            try:
+                net = self.unparse_network(stmt)
+                if net:
+                    networks_xml.append(str(net))  # 强制转 str 防止 Join 报错
+            except Exception:
+                continue
+
+        if not networks_xml:
+            return ""
+
+        networks_str = "\n".join(networks_xml)
+        # 🚀 渲染为片段而非完整 Project
+        return self.render("pou_fragment", unit_type=xml_tag, name=pou_name, networks_str=networks_str)
 
     def _find_pou_nodes(self, node: Any) -> list:
         found = []
@@ -153,32 +196,6 @@ class FBDXmlUnparser:
     # ==========================================
     # 🏗️ POU 解析与 Network 收割
     # ==========================================
-    def unparse_pou(self, pou_node: Dict[str, Any]) -> str:
-        pou_node = self._force_dict(pou_node)
-        pou_name = pou_node.get("name", "GeneratedPOU")
-
-        # 核心改进：深度拍平 body，防止 [[{...}]] 导致判断为空
-        raw_body = pou_node.get("body", [])
-        flat_body = self._flatten_ast(raw_body)
-
-        if not flat_body:
-            raise ValueError(f"[诊断: Body为空] POU '{pou_name}' 没有任何可执行语句。")
-
-        networks_xml = []
-        for stmt in flat_body:
-            try:
-                # 即使某行语句崩了，也跳过它继续处理后面的
-                net = self.unparse_network(stmt)
-                if net:
-                    networks_xml.append(net)
-            except Exception:
-                continue
-
-        if not networks_xml:
-            raise ValueError(f"[诊断: 语句全被过滤] POU '{pou_name}' 内无合法数据流语句。")
-
-        networks_str = "\n".join(networks_xml)
-        return self.render("project", pou_name=pou_name, networks_str=networks_str)
 
     def unparse_network(self, stmt_node: Any) -> str:
         stmt_node = self._force_dict(stmt_node)
