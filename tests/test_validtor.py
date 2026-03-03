@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from st2xml.validtor.validtor import IEC61131Validator, ValidationException
+from src.xmlvalidtor import IEC61131Validator, ValidationException
 
 
 def test_validator():

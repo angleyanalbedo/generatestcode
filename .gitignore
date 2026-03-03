@@ -16,3 +16,5 @@ src/stdatacleaner/__pycache__
 src/staugment/__pycache__
 src/stanalyzer/__pycache__
 src/distillation/__pycache__
+src/fbdunparser/__pycache__
+src/xmlvalidtor/__pycache__
