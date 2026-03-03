@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+						xmlns:ppx="www.iec.ch/public/TC65SC65BWG7TF10"
+						xmlns:rxt="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation"
+						targetNamespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation"
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10" schemaLocation="IEC61131_10_Ed1_0.xsd" />
+	<xsd:complexType name="ScriptBlock">
+		<xsd:annotation>
+			<xsd:documentation>
+				<![CDATA[
+				"Sctipt block" is a kind of graphical block object where short texual script can be programed instantly.
+				]]>
+			</xsd:documentation>
+		</xsd:annotation>
+		<xsd:complexContent>
+			<xsd:extension base="ppx:FbdObjectBase">
+				<xsd:sequence>
+					<xsd:element name="Script" type="ppx:ProgrammingLanguageBase"/>
+					<xsd:element name="ConnectionPointIn" type="ppx:ConnectionPointIn" minOccurs="0"/>
+					<xsd:element name="ConnectionPointOut" type="ppx:ConnectionPointOut" minOccurs="0"/>
+				</xsd:sequence>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+</xsd:schema>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:element name="HiddenFormalParameter">
+		<xsd:annotation>
+			<xsd:documentation>Hide a FormalParameter (do not display formal parameter of a FB invocation) via "addData".
+				Use 'hiddenFormalParameter' as a child node of 'inputVariables'->'variable'->'addData'.
+				The attribute 'hideable' defines whether this formal parameter can be hidden or not.
+				The attribute 'hide' defines whether this formal parameter (at this FU/FB invocation) is hidden.
+				The connection of the formal parameter with a variable (or literal) is expressed via 'connectionPointIn' anyhow, although
+				in case of 'hide=true' the connected variable or literal is not displayed, too.
+				
+				Note: the attribute 'suppressName' (defined by IEC 6113-10) of the node type 'variable' defines only whether the name of the formal parameter is displayed or not.
+			</xsd:documentation>
+		</xsd:annotation>
+		<xsd:complexType>
+			<xsd:attribute name="hideable" type="xsd:boolean" default="false"/>
+			<xsd:attribute name="hide" type="xsd:boolean" use="optional"/>
+		</xsd:complexType>
+	</xsd:element>
+</xsd:schema>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:ppx="www.iec.ch/public/TC65SC65BWG7TF10"
+            xmlns:rxt="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" targetNamespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation"
+            elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10" schemaLocation="IEC61131_10_Ed1_0.xsd"/>
+  <xsd:annotation>
+    <xsd:documentation>This is a recommendation for using xml markup to format text.</xsd:documentation>
+  </xsd:annotation>
+
+  <xsd:simpleType name="Colour">
+    <xsd:annotation>
+      <xsd:documentation>
+        a color using sRGB: #RRGGBB as Hex values There are also 16 widely known color names with their sRGB values: Black = #000000 Green = #008000 Silver = #C0C0C0 Lime = #00FF00 Gray = #808080 Olive = #808000 White = #FFFFFF Yellow = #FFFF00 Maroon = #800000 Navy = #000080 Red = #FF0000 Blue = #0000FF Purple = #800080 Teal = #008080 Fuchsia= #FF00FF Aqua = #00FFFF
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:restriction base="xsd:string">
+      <xsd:pattern value="[A-Za-z]+|#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{6}"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:element name="font">
+    <xsd:annotation>
+      <xsd:documentation>
+        change font style locally
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup">
+          <xsd:attribute name="size" type="xsd:string" use="optional"/>
+          <xsd:attribute name="color" type="rxt:Colour" use="optional"/>
+          <xsd:attribute name="face" type="xsd:string" use="optional"/>
+        </xsd:extension>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="strike">
+    <xsd:annotation>
+      <xsd:documentation>
+        strike-through
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup"/>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="italic">
+    <xsd:annotation>
+      <xsd:documentation>
+        italic font
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup"/>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="bold">
+    <xsd:annotation>
+      <xsd:documentation>
+        bold font
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup"/>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="big">
+    <xsd:annotation>
+      <xsd:documentation>
+        bigger font
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup"/>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="small">
+    <xsd:annotation>
+      <xsd:documentation>
+        smaller font
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup"/>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="underline">
+    <xsd:annotation>
+      <xsd:documentation>
+        underline
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:complexType mixed="true">
+      <xsd:complexContent>
+        <xsd:extension base="rxt:textmarkup"/>
+      </xsd:complexContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:group name="textstyle">
+    <xsd:choice>
+      <xsd:element ref="rxt:italic"/>
+      <xsd:element ref="rxt:bold"/>
+      <xsd:element ref="rxt:underline"/>
+      <xsd:element ref="rxt:strike"/>
+      <xsd:element ref="rxt:big"/>
+      <xsd:element ref="rxt:small"/>
+      <xsd:element ref="rxt:font"/>
+    </xsd:choice>
+  </xsd:group>
+
+  <xsd:complexType name="textmarkup" mixed="true">
+    <xsd:annotation>
+      <xsd:documentation>
+        Use textstyle elements for markup of text inside of headline and paragraph elements
+      </xsd:documentation>
+    </xsd:annotation>
+    <xsd:choice minOccurs="0" maxOccurs="unbounded">
+      <xsd:group ref="rxt:textstyle"/>
+    </xsd:choice>
+  </xsd:complexType>
+
+  <xsd:complexType name="FormattedMarkupText">
+    <xsd:complexContent mixed="true">
+      <xsd:extension base="ppx:TextBase">
+        <xsd:all>
+          <xsd:element name="par">
+            <xsd:annotation>
+              <xsd:documentation>
+                paragraph
+              </xsd:documentation>
+            </xsd:annotation>
+            <xsd:complexType mixed="true">
+              <xsd:complexContent>
+                <xsd:extension base="rxt:textmarkup"/>
+              </xsd:complexContent>
+            </xsd:complexType>
+          </xsd:element>
+
+          <xsd:element name="headline">
+            <xsd:annotation>
+              <xsd:documentation>
+                headline
+              </xsd:documentation>
+            </xsd:annotation>
+            <xsd:complexType mixed="true">
+              <xsd:complexContent>
+                <xsd:extension base="rxt:textmarkup"/>
+              </xsd:complexContent>
+            </xsd:complexType>
+          </xsd:element>
+
+          <xsd:element ref="rxt:italic"/>
+          <xsd:element ref="rxt:bold"/>
+          <xsd:element ref="rxt:underline"/>
+          <xsd:element ref="rxt:strike"/>
+          <xsd:element ref="rxt:big"/>
+          <xsd:element ref="rxt:small"/>
+          <xsd:element ref="rxt:font"/>
+        </xsd:all>
+      </xsd:extension>
+    </xsd:complexContent>
+  </xsd:complexType>
+</xsd:schema>

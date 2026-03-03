@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+						xmlns:ppx="www.iec.ch/public/TC65SC65BWG7TF10"
+						xmlns:rxt="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" 
+						targetNamespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation"
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10" schemaLocation="IEC61131_10_Ed1_0.xsd"/>
+	<xsd:complexType name="NamedEventTask">
+		<xsd:annotation>
+			<xsd:documentation>
+				Describe a system task which is executed upon system events like start/stop PLC.
+				This implementation extends the abstract type "ppx:TaskBase".
+				The system event is identified  by its "triggerName".
+			</xsd:documentation>
+		</xsd:annotation>
+		<xsd:complexContent>
+			<xsd:extension base="ppx:TaskBase" >
+				<xsd:attribute name="triggerName" use="required">
+					<xsd:annotation>
+						<xsd:documentation>Implementers may add/delete names of system-defined events.</xsd:documentation>
+					</xsd:annotation>
+					<xsd:simpleType>
+						<xsd:restriction base="xsd:NMTOKEN">
+							<xsd:enumeration value="plcColdStart"/>
+							<xsd:enumeration value="plcWarmStart"/>
+							<xsd:enumeration value="plcHotStart"/>
+							<xsd:enumeration value="plcStop"/>
+						</xsd:restriction>
+					</xsd:simpleType>
+				</xsd:attribute>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+</xsd:schema>

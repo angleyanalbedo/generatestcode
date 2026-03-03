@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:element name="Worksheet">
+		<xsd:annotation>
+			<xsd:documentation>
+				Worksheet
+				=========
+				Worksheet is a logical unit to structure the code within a POU:
+					One or more networks (or ST statements) build a worksheet.
+					One or more worksheets build the main body of a POU.
+					One or more worksheets build a method.
+				Each worksheet has a name (unique within this body).
+				
+				Expressing worksheet via "addData" by the following mechanism:
+				Each element "ST", "IL", "FBD", "LD" and "SFC" is extended by 'worksheet' child node
+			</xsd:documentation>
+		</xsd:annotation>
+		<xsd:complexType>
+			<xsd:attribute name="worksheetName" type="xsd:string" use="required"/>
+			<xsd:attribute name="evaluationOrder" type="xsd:decimal" use="required"/> <!-- Evaluation/Execution of lowest number first, starting with 0. -->
+		</xsd:complexType>
+	</xsd:element>
+</xsd:schema>

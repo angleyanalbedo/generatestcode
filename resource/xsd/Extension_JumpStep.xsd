@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+						xmlns:ppx="www.iec.ch/public/TC65SC65BWG7TF10"
+						xmlns:rxt="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" targetNamespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation"
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10" schemaLocation="IEC61131_10_Ed1_0.xsd" />
+	<xsd:element name="JumpStep">
+		<xsd:annotation>
+			<xsd:documentation>
+				"JumpStep" is an element which can be used instead of a "Step" as a successor of a "Transition" or "SelectionConvergence".
+				"JumpStep" does not have an associated actionBlock asigned nor a successor ("Transition" or "SelectionDivergence").
+				Instead "JumpStep" contains the name of another existing step in the SFC chart.
+				So "JumpStep" can be regarded as a SFC-connector which connects a transition or selection convergence to another step.
+			</xsd:documentation>
+		</xsd:annotation>
+		<xsd:complexType>
+			<xsd:complexContent>
+				<xsd:extension base="ppx:SfcObjectBase">
+					<xsd:sequence>
+						<xsd:element name="ConnectionPointIn" type="ppx:ConnectionPointIn" minOccurs="0"/>
+					</xsd:sequence>
+					<xsd:attribute name="targetStepName" type="xsd:string" use="required"/>
+				</xsd:extension>
+			</xsd:complexContent>
+		</xsd:complexType>
+	</xsd:element>
+</xsd:schema>
+

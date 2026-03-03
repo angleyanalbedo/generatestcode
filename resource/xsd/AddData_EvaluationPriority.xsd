@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:element name="EvaluationPriority">
+		<xsd:annotation>
+			<xsd:documentation>
+				EvaluationPriority
+				==================
+				'EvaluationPriority' defines a priority among different 'ppx:Block' elements.
+				It defines a rule in which order 'ppx:Block' shall be evaluated (executed).
+				The rule is applicable only for those blocks with an evaluation priority specified.
+				The scope of this rule is in FBD a 'ppx:FbdNetwork' and in LD a 'ppx:LadderRung'.
+				A block with a smaller number shall be evaluated earlier within its superior network.
+				Within a network each priority shall be unique, i.e. two blocks shall not have the same priority value.
+
+				Expressing EvaluationPriority via "addData" by the following mechanism:
+				Each 'ppx:Block' may be extended by 'EvaluationPriority' child node.
+			</xsd:documentation>
+		</xsd:annotation>
+		<xsd:complexType>
+			<xsd:attribute name="priorityInNetwork" type="xsd:unsignedLong" />
+		</xsd:complexType>
+	</xsd:element>
+</xsd:schema>

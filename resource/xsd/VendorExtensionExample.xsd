@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xhtml="http://www.w3.org/1999/xhtml" 
+						xmlns:ppx="www.iec.ch/public/TC65SC65BWG7TF10"
+						xmlns:rxt="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" 
+						xmlns:myns="http://www.someVendor.com/xml/PLC" targetNamespace="http://www.someVendor.com/xml/PLC" 
+						elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xsd:annotation>
+		<xsd:documentation>This is an example for vendors to extend IEC 61131-10 to represent vendor-specific extension.</xsd:documentation>
+	</xsd:annotation>
+	<!--Importing normative standard schema-->
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10" schemaLocation="IEC61131_10_Ed1_0.xsd"/>
+	<!--Importing infomative recommendation schemata for popular extensions-->
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" schemaLocation="Extension_FormattedMarkupText.xsd"/>
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" schemaLocation="Extension_InstantScriptBlock.xsd"/>
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" schemaLocation="Extension_JumpStep.xsd"/>
+	<xsd:import namespace="www.iec.ch/public/TC65SC65BWG7TF10/Recommendation" schemaLocation="Extension_NamedEventTask.xsd"/>
+	<!-- Vendor-specific Subrange type which can be instantly defined. -->
+	<xsd:complexType name="InstantlyDefinedSubrangeTypeSpec">
+		<xsd:complexContent>
+			<xsd:extension base="ppx:InstantlyDefinableTypeSpecBase">
+				<xsd:sequence>
+					<xsd:element name="Range">
+						<xsd:complexType>
+							<xsd:attribute name="lower" type="xsd:string" use="required"/>
+							<xsd:attribute name="upper" type="xsd:string" use="required"/>
+						</xsd:complexType>
+					</xsd:element>
+					<xsd:element name="BaseType" type="ppx:TypeRef"/>
+				</xsd:sequence>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+</xsd:schema>
