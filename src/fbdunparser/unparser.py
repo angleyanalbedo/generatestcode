@@ -6,7 +6,9 @@ from typing import List, Dict, Any
 # ==========================================
 XML_TEMPLATES = {
     "project": """<?xml version="1.0" encoding="utf-8"?>
-<Project xmlns="www.iec.ch/public/TC65SC65BWG7TF10" schemaVersion="1.0">
+<Project xmlns="www.iec.ch/public/TC65SC65BWG7TF10" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+         schemaVersion="1.0">
   <FileHeader companyName="SyntheticDataGen" productName="LLM_AST_Unparser" productVersion="1.0"/>
   <ContentHeader name="LLM_Synthetic_Project" creationDateTime="2024-01-01T00:00:00">
     <CoordinateInfo>
@@ -17,35 +19,37 @@ XML_TEMPLATES = {
     <GlobalNamespace>
       <Program name="{{ pou_name }}">
         <MainBody>
-          <FBD>
+          <BodyContent xsi:type="FBD">
 {{ networks_str }}
-          </FBD>
+          </BodyContent>
         </MainBody>
       </Program>
     </GlobalNamespace>
   </Types>
+  <Instances/>
 </Project>""",
 
     "network": """            <Network evaluationOrder="{{ order }}">
 {{ elements_str }}
             </Network>""",
 
-    "data_source": """              <DataSource identifier="{{ name }}" globalId="OBJ_{{ global_id }}">
+    # 修复 3: 将所有图元转为 FbdObject 并指定 xsi:type
+    "data_source": """              <FbdObject xsi:type="DataSource" identifier="{{ name }}" globalId="OBJ_{{ global_id }}">
                 <RelPosition x="100" y="{{ y }}" />
                 <ConnectionPointOut connectionPointOutId="{{ out_id }}">
                   <RelPosition x="40" y="10" />
                 </ConnectionPointOut>
-              </DataSource>""",
+              </FbdObject>""",
 
-    "data_sink": """              <DataSink identifier="{{ name }}" globalId="OBJ_{{ global_id }}">
+    "data_sink": """              <FbdObject xsi:type="DataSink" identifier="{{ name }}" globalId="OBJ_{{ global_id }}">
                 <RelPosition x="800" y="{{ y }}" />
                 <ConnectionPointIn>
                   <RelPosition x="0" y="10" />
                   <Connection refConnectionPointOutId="{{ connected_out_id }}" />
                 </ConnectionPointIn>
-              </DataSink>""",
+              </FbdObject>""",
 
-    "block": """              <Block typeName="{{ type_name }}" globalId="OBJ_{{ global_id }}">
+    "block": """              <FbdObject xsi:type="Block" typeName="{{ type_name }}" globalId="OBJ_{{ global_id }}">
                 <RelPosition x="{{ x }}" y="{{ y }}" />
                 <InputVariables>
 {% for pin in inputs %}
@@ -64,7 +68,7 @@ XML_TEMPLATES = {
                     </ConnectionPointOut>
                   </OutputVariable>
                 </OutputVariables>
-              </Block>"""
+              </FbdObject>"""
 }
 
 
