@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from tqdm import tqdm
 
-from src.fbdunparser.unparser import FBDXmlUnparser
+from src.fbdunparser import FBDXmlUnparser
 from src.xmlvalidtor import IEC61131Validator
 from src.stparser.anltr4 import STParser
 

@@ -1,4 +1,4 @@
-from src.fbdunparser.unparser import FBDXmlUnparser
+from src.fbdunparser import FBDXmlUnparser
 from src.xmlvalidtor import IEC61131Validator
 import xml.dom.minidom
 import xml.dom.minidom
