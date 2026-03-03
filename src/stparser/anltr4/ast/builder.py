@@ -69,53 +69,71 @@ class STAstBuilder(IEC61131ParserVisitor):
         return pous
 
     # ==========================================
-    # 1. 顶层结构 (标准显式访问版)
+    # 1. 顶层 POU 结构 (修复了 Body 提取逻辑)
     # ==========================================
 
     def visitProgram_declaration(self, ctx: IEC61131Parser.Program_declarationContext) -> Dict[str, Any]:
-        try:
-            # 使用 getattr 拿对象，不加括号调用！
-            name_node = getattr(ctx, 'identifier', None)
-            body_node = getattr(ctx, 'body', None)
+        # 💡 正确做法：直接调用 ANTLR 生成的方法获取 Context 对象
+        body_ctx = ctx.body() if hasattr(ctx, 'body') else None
 
-            return {
-                "unit_type": "PROGRAM",
-                "name": self.safe_text(name_node),
-                "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-                "body": self.visit(body_node()) if (body_node and callable(body_node)) else []
-            }
-        except Exception as e:
-            raise ValueError(f"[AST诊断] Program 解析崩溃: {str(e)}")
+        return {
+            "unit_type": "PROGRAM",
+            "name": self.safe_text(ctx.identifier),
+            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+            # 💡 只有通过 visit(body_ctx)，才能触发下面的 visitBody 逻辑
+            "body": self.visit(body_ctx) if body_ctx else []
+        }
 
-    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[str, Any]:
-        try:
-            name_node = getattr(ctx, 'identifier', None)
-            body_node = getattr(ctx, 'body', None)
-            return {
-                "unit_type": "FUNCTION_BLOCK",
-                "name": self.safe_text(name_node),
-                "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-                "body": self.visit(body_node()) if (body_node and callable(body_node)) else []
-            }
-        except Exception as e:
-            raise ValueError(f"[AST诊断] FB 解析崩溃: {str(e)}")
+    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[
+        str, Any]:
+        body_ctx = ctx.body() if hasattr(ctx, 'body') else None
+        return {
+            "unit_type": "FUNCTION_BLOCK",
+            "name": self.safe_text(ctx.identifier),
+            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+            "body": self.visit(body_ctx) if body_ctx else []
+        }
 
     def visitFunction_declaration(self, ctx: IEC61131Parser.Function_declarationContext) -> Dict[str, Any]:
-        try:
-            name_node = getattr(ctx, 'identifier', None)
-            type_node = getattr(ctx, 'elementary_type_name', None) or getattr(ctx, 'type_declaration', None)
-            body_node = getattr(ctx, 'funcBody', None)
+        # 💡 注意：Function 通常使用 funcBody()
+        body_ctx = ctx.funcBody() if hasattr(ctx, 'funcBody') else None
+        return {
+            "unit_type": "FUNCTION",
+            "name": self.safe_text(ctx.identifier),
+            "return_type": self.safe_text(ctx.elementary_type_name) or "UNKNOWN",
+            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+            "body": self.visit(body_ctx) if body_ctx else []
+        }
 
-            return {
-                "unit_type": "FUNCTION",
-                "name": self.safe_text(name_node),
-                "return_type": self.safe_text(type_node) or "UNKNOWN",
-                "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-                "body": self.visit(body_node()) if (body_node and callable(body_node)) else []
-            }
-        except Exception as e:
-            raise ValueError(f"[AST诊断] Function 解析崩溃: {str(e)}")
+    # ==========================================
+    # 2. 核心中转站 (解决 Body 依然为空的真凶)
+    # ==========================================
 
+    def visitBody(self, ctx: IEC61131Parser.BodyContext):
+        """处理 PROGRAM 和 FB 的身体部分"""
+        # 必须把访问权交给 statement_list，否则链条在此中断返回 None
+        if hasattr(ctx, 'statement_list') and ctx.statement_list():
+            return self.visit(ctx.statement_list())
+        return []
+
+    def visitFuncBody(self, ctx: IEC61131Parser.FuncBodyContext):
+        """处理 FUNCTION 的身体部分"""
+        if hasattr(ctx, 'statement_list') and ctx.statement_list():
+            return self.visit(ctx.statement_list())
+        return []
+
+    def visitStatement_list(self, ctx: IEC61131Parser.Statement_listContext) -> List[Dict[str, Any]]:
+        """最终收割所有语句"""
+        stmts = []
+        for sctx in ctx.statement():
+            res = self.visit(sctx)
+            if res:
+                # 兼容处理：确保收集到的是字典格式的语句
+                if isinstance(res, list):
+                    stmts.extend(res)
+                else:
+                    stmts.append(res)
+        return stmts  # 👈 这里的 return 决定了顶层 body 是否有数据
 
     # 函数/功能块调用提取 (彻底解决 Symbolic_variableContext 和 NameContext 报错)
     def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> Dict[str, Any]:

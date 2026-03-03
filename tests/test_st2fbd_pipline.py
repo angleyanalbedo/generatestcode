@@ -8,7 +8,7 @@ from src.stparser.anltr4 import STParser
 
 def test_st_to_fbd_pipeline(
         input_folder: str = "../resource/st_source_code",
-        xsd_rel_path: str = "../resource/xsd/IEC61131_10_Ed1_0.xsd"
+        xsd_rel_path: str = "../resource/xsd/IEC61131_10_Ed1_0.xsd",
 ):
     # 1. 初始化所有组件
     parser = STParser()
@@ -44,7 +44,6 @@ def test_st_to_fbd_pipeline(
     }
     failure_details = []
 
-    # 2. 遍历测试
     for file_path in tqdm(st_files, desc="Processing Pipeline"):
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -129,3 +128,55 @@ def test_st_to_fbd_pipeline(
     print("=" * 60)
 
 
+def debug_single_st(file_path: str):
+    """
+    单文件手术刀：深度打印 AST 结构，确认 body 到底去哪了
+    """
+    parser = STParser()
+    unparser = FBDXmlUnparser()
+
+    print(f"🔬 正在诊断文件: {file_path}")
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        code = f.read()
+
+    # 1. 解析 AST
+    result = parser.get_ast(code)
+    ast = result.get("ast") or result.get("data")
+
+    if not ast:
+        print("❌ AST 解析结果为空!")
+        return
+
+    # 2. 深度观察 POU 和 Body
+    # 假设 ast 是一个列表（Start 节点返回多个 POU）
+    pous = ast if isinstance(ast, list) else [ast]
+
+    print(f"📦 发现 {len(pous)} 个 POU 节点:")
+    for i, pou in enumerate(pous):
+        name = pou.get("name", "Unnamed")
+        u_type = pou.get("unit_type", "Unknown")
+        body = pou.get("body", [])
+
+        print(f"\n--- POU [{i}] : {name} ({u_type}) ---")
+        print(f"  🔹 变量块数量: {len(pou.get('var_blocks', []))}")
+        print(f"  🔹 Body 内容: {body}")
+
+        if not body:
+            print("  ⚠️ 警告: Body 是空的！这说明 Builder 没有进入语句块解析。")
+        else:
+            print(f"  ✅ Body 抓取成功，包含 {len(body)} 条顶级语句。")
+            # 打印第一条语句的细节确认格式
+            print(f"  📄 第一条语句样版: {str(body[0])[:100]}...")
+
+    # 3. 尝试运行 Unparser 诊断
+    try:
+        print("\n⚡ 尝试执行 XML Unparse...")
+        xml = unparser.unparse(ast)
+        print("✅ XML 生成成功！内容片段:")
+        print(xml[:200] + "...")
+    except Exception as e:
+        print(f"❌ Unparse 失败: {str(e)}")
+
+def test_single_st():
+    debug_single_st("../resource/st_source_code/ACOSH.ST")
