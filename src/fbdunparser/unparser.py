@@ -110,14 +110,34 @@ class FBDXmlUnparser:
         return {}
 
     # ==========================================
-    # 🌟 诊断版入口
+    # 🌟 自适应 POU 节点入口 (多 POU 扫描版)
     # ==========================================
     def unparse(self, ast_root: Any) -> str:
         pou_nodes = self._find_pou_nodes(ast_root)
         if not pou_nodes:
-            # 🚨 诊断点 1：根本没找到 POU
-            raise ValueError(f"[诊断: 找不到 POU (unit_type)] AST根节点结构: {str(ast_root)[:200]}...")
-        return self.unparse_pou(pou_nodes[0])
+            raise ValueError("[诊断: 找不到POU] AST 结构中没有 unit_type 节点。")
+
+        # 遍历文件中所有的 POU（很多文件顶部会有内置的空接口函数）
+        valid_pou_xmls = []
+        last_error = ""
+
+        for pou in pou_nodes:
+            try:
+                # 尝试解析当前 POU
+                xml = self.unparse_pou(pou)
+                if xml:
+                    valid_pou_xmls.append(xml)
+            except Exception as e:
+                # 记录报错，但不中断！继续尝试挖掘文件里的下一个 POU
+                last_error = str(e)
+                continue
+
+        if not valid_pou_xmls:
+            # 如果整个文件里所有的 POU 都没救活，把最后一个报错扔出去作为统计
+            raise ValueError(f"[诊断: 所有 POU 被过滤] 共扫描 {len(pou_nodes)} 个 POU。最后报错: {last_error}")
+
+        # 对于 LLM SFT 语料，只要提取到该文件里的第一个高质量流图，就大功告成了！
+        return valid_pou_xmls[0]
 
     def _find_pou_nodes(self, node: Any) -> list:
         found = []
@@ -132,84 +152,7 @@ class FBDXmlUnparser:
                 found.extend(self._find_pou_nodes(item))
         return found
 
-    def unparse_pou(self, pou_node: Dict[str, Any]) -> str:
-        pou_node = self._safe_dict(pou_node)
-        pou_name = pou_node.get("name", "GeneratedPOU")
 
-        raw_body = pou_node.get("body", [])
-        flat_body = self._flatten_ast(raw_body)
-
-        if not flat_body:
-            # 🚨 诊断点 2：body 解析失败或为空
-            raise ValueError(f"[诊断: Body为空] POU '{pou_name}' 的 body 解析出是空的。原始 body 数据: {str(raw_body)[:200]}")
-
-        networks_xml = []
-        for stmt in flat_body:
-            # 遇到报错直接抛给上层测试脚本，不要拦截
-            net = self.unparse_network(stmt)
-            if net:
-                networks_xml.append(net)
-
-        if not networks_xml:
-            raise ValueError(f"[诊断: 所有语句生成失败] POU '{pou_name}' 内没有生成任何合法的 Network。")
-
-        networks_str = "\n".join(networks_xml)
-        return self.render("project", pou_name=pou_name, networks_str=networks_str)
-
-    # ==========================================
-    # 3. 诊断版解析 Network
-    # ==========================================
-    def unparse_network(self, stmt_node: Any) -> str:
-        stmt_node = self._safe_dict(stmt_node)
-        if not stmt_node:
-            raise ValueError(f"[诊断: 空语句节点] 传入了空字典或无法提取字典。节点: {stmt_node}")
-
-        self.elements_xml = []
-        self.current_y += 80
-        stmt_type = stmt_node.get("stmt_type")
-
-        if not stmt_type:
-            # 🚨 诊断点 3：语句字典里居然没有 stmt_type
-            raise ValueError(f"[诊断: 语句缺少 stmt_type] 节点内容: {str(stmt_node)[:150]}")
-
-        if stmt_type == "assign":
-            right_out_id = self._parse_expr(stmt_node.get("value"))
-            target_dict = self._safe_dict(stmt_node.get("target"))
-            target_name = target_dict.get("name", "UNKNOWN")
-            self._build_data_sink(target_name, right_out_id)
-
-        elif stmt_type == "if":
-            self._parse_if_to_sel(stmt_node)
-
-        elif stmt_type == "call":
-            func_name = stmt_node.get("func_name", "UNKNOWN_FUNC")
-            args = stmt_node.get("args", [])
-            flat_args = self._flatten_ast(args) if isinstance(args, list) else [self._safe_dict(args)]
-
-            inputs = []
-            for i, arg in enumerate(flat_args):
-                arg_out_id = self._parse_expr(arg)
-                inputs.append({"name": f"IN{i + 1}", "y": 20 + i * 20, "ref_out_id": arg_out_id})
-                self.current_y += 30
-
-            global_id = self.get_id()
-            out_pin_id = self.get_id()
-            block_height = max(40, len(flat_args) * 20 + 20)
-
-            block_xml = self.render("block", global_id=global_id, out_id=out_pin_id, type_name=func_name,
-                                    height=block_height, width=60, x=400, y=self.current_y - 30, out_y=20,
-                                    inputs=inputs)
-            self.elements_xml.append(block_xml)
-
-        else:
-            # 🚨 诊断点 4：遇到了目前我们不支持的语句类型（比如 FOR, WHILE 等）
-            raise ValueError(f"[诊断: 不支持的语句类型] 遇到了 '{stmt_type}'，由于无法映射为标准 FBD 数据流已被丢弃。节点: {str(stmt_node)[:150]}")
-
-        if not self.elements_xml: return ""
-
-        self.network_order += 1
-        elements_str = "\n".join(self.elements_xml)
-        return self.render("network", order=self.network_order, elements_str=elements_str)
 
     def _build_data_sink(self, target_name: str, connected_out_id: str):
         out_xml = self.render("data_sink", global_id=self.get_id(), y=self.current_y, connected_out_id=connected_out_id, name=target_name)
@@ -287,12 +230,99 @@ class FBDXmlUnparser:
             raise ValueError(f"[诊断: 不支持的表达式类型] '{expr_type}'。内容: {str(expr)[:150]}")
 
 
-    def _parse_if_to_sel(self, stmt_node: Dict[str, Any]):
+
+
+    # ==========================================
+    # 🌟 生成 Project 根结构 (淘金过滤版)
+    # ==========================================
+    def unparse_pou(self, pou_node: Dict[str, Any]) -> str:
+        pou_node = self._safe_dict(pou_node)
+        pou_name = pou_node.get("name", "GeneratedPOU")
+
+        raw_body = pou_node.get("body", [])
+        flat_body = self._flatten_ast(raw_body)
+
+        if not flat_body:
+            # 确实是空壳函数，抛出错误让外层统计为过滤
+            raise ValueError(f"[诊断: Body为空] 可能是接口或内置函数。")
+
+        networks_xml = []
+        for stmt in flat_body:
+            try:
+                # 尝试解析单条语句，如果内部不支持会返回空字符串
+                net = self.unparse_network(stmt)
+                if net:
+                    networks_xml.append(net)
+            except Exception:
+                # 遇到异常静默跳过，绝不影响其他语句的生成
+                continue
+
+        if not networks_xml:
+            raise ValueError(f"[诊断: 语句全被过滤] 文件内的语句(如复杂IF/FOR)超出了基础流图的表达范围。")
+
+        networks_str = "\n".join(networks_xml)
+        return self.render("project", pou_name=pou_name, networks_str=networks_str)
+
+    # ==========================================
+    # 3. 解析 Network (静默过滤)
+    # ==========================================
+    def unparse_network(self, stmt_node: Any) -> str:
+        stmt_node = self._safe_dict(stmt_node)
+        if not stmt_node: return ""
+
+        self.elements_xml = []
+        self.current_y += 80
+        stmt_type = stmt_node.get("stmt_type")
+
+        if stmt_type == "assign":
+            right_out_id = self._parse_expr(stmt_node.get("value"))
+            target_dict = self._safe_dict(stmt_node.get("target"))
+            target_name = target_dict.get("name", "UNKNOWN")
+            self._build_data_sink(target_name, right_out_id)
+
+        elif stmt_type == "if":
+            # 如果转换失败，返回空字符串丢弃
+            if not self._parse_if_to_sel(stmt_node):
+                return ""
+
+        elif stmt_type == "call":
+            func_name = stmt_node.get("func_name", "UNKNOWN_FUNC")
+            args = stmt_node.get("args", [])
+            flat_args = self._flatten_ast(args) if isinstance(args, list) else [self._safe_dict(args)]
+
+            inputs = []
+            for i, arg in enumerate(flat_args):
+                arg_out_id = self._parse_expr(arg)
+                inputs.append({"name": f"IN{i + 1}", "y": 20 + i * 20, "ref_out_id": arg_out_id})
+                self.current_y += 30
+
+            global_id = self.get_id()
+            out_pin_id = self.get_id()
+            block_height = max(40, len(flat_args) * 20 + 20)
+
+            block_xml = self.render("block", global_id=global_id, out_id=out_pin_id, type_name=func_name,
+                                    height=block_height, width=60, x=400, y=self.current_y - 30, out_y=20,
+                                    inputs=inputs)
+            self.elements_xml.append(block_xml)
+        else:
+            return ""  # 遇到 RETURN, FOR 等不支持的语句，静默返回空字符串丢弃
+
+        if not self.elements_xml: return ""
+
+        self.network_order += 1
+        elements_str = "\n".join(self.elements_xml)
+        return self.render("network", order=self.network_order, elements_str=elements_str)
+
+    # ==========================================
+    # 5. IF 转 SEL (失败返回 False)
+    # ==========================================
+    def _parse_if_to_sel(self, stmt_node: Dict[str, Any]) -> bool:
         cond = stmt_node.get("cond")
         then_body = stmt_node.get("then_body", [])
         else_body = stmt_node.get("else_body", [])
 
-        if isinstance(then_body, list) and len(then_body) == 1 and isinstance(else_body, list) and len(else_body) == 1:
+        if isinstance(then_body, list) and len(then_body) == 1 and isinstance(else_body, list) and len(
+                else_body) == 1:
             then_stmt = self._safe_dict(then_body[0])
             else_stmt = self._safe_dict(else_body[0])
 
@@ -309,18 +339,17 @@ class FBDXmlUnparser:
 
                     global_id = self.get_id()
                     sel_out_pin_id = self.get_id()
+
                     inputs = [
                         {"name": "G", "y": 20, "ref_out_id": g_out_id},
                         {"name": "IN0", "y": 40, "ref_out_id": in0_out_id},
                         {"name": "IN1", "y": 60, "ref_out_id": in1_out_id}
                     ]
                     sel_xml = self.render("block", global_id=global_id, out_id=sel_out_pin_id, type_name="SEL",
-                                          height=80, width=40, x=500, y=self.current_y - 60, out_y=30, inputs=inputs)
+                                          height=80, width=40, x=500, y=self.current_y - 60, out_y=30,
+                                          inputs=inputs)
 
                     self.elements_xml.append(sel_xml)
                     self._build_data_sink(t_name, sel_out_pin_id)
-                else:
-                    raise ValueError(f"[诊断: IF转SEL失败] THEN 和 ELSE 赋值目标不一致或为空。THEN: '{t_name}', ELSE: '{e_name}'")
-        else:
-            # 🚨 诊断点 7：IF 结构太复杂，不符合我们简单的 SEL 转换要求
-            raise ValueError(f"[诊断: IF语句过于复杂] 只有纯净的单条 if-else 赋值能转为 SEL 流图。")
+                    return True  # 转换成功
+        return False  # 结构太复杂，转换失败

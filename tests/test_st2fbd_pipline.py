@@ -71,7 +71,7 @@ def test_st_to_fbd_pipeline(
             # --- 阶段 2: AST 还原为 FBD XML ---
             xml_output = ""
             try:
-                xml_output = unparser.unparse_pou(ast_data)
+                xml_output = unparser.unparse(ast_data)
                 if not xml_output.strip():
                     raise ValueError("Unparser returned empty string (possibly unsupported syntax)")
             except Exception as e:

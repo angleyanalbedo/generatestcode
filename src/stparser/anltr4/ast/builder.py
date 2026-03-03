@@ -61,53 +61,23 @@ class STAstBuilder(IEC61131ParserVisitor):
     # 🛡️ 终极防弹 Body 提取器
     # ==========================================
     def _extract_body(self, ctx) -> List[Dict]:
-        """无视一切底层结构差异，暴力提取语句块，绝不抛出 AttributeError"""
-        if not ctx:
-            return []
+        """
+        不管节点叫什么名字，只要它包含子节点，就递归向下挖掘 statement
+        """
+        if not ctx: return []
 
-        # 路线 1：尝试提取常规的 body() -> statement_list() [适用于 PROGRAM 和 FB]
-        try:
-            body_meth = getattr(ctx, 'body', None)
-            if callable(body_meth):
-                body_ctx = body_meth()
-                if body_ctx:
-                    stmt_meth = getattr(body_ctx, 'statement_list', None)
-                    if callable(stmt_meth):
-                        stmt_ctx = stmt_meth()
-                        if stmt_ctx:
-                            return self.visit(stmt_ctx)
-                    # 如果 body 里没有 statement_list，直接 visit body
-                    return self.visit(body_ctx)
-        except AttributeError:
-            pass
-        except Exception:
-            pass
+        # 如果当前节点直接就是 statement_list，直接 visit
+        if "statement_list" in type(ctx).__name__.lower():
+            return self.visit(ctx)
 
-        # 路线 2：尝试直接提取 statement_list() [适用于某些特殊 FUNCTION]
-        try:
-            stmt_meth = getattr(ctx, 'statement_list', None)
-            if callable(stmt_meth):
-                stmt_ctx = stmt_meth()
-                if stmt_ctx:
-                    return self.visit(stmt_ctx)
-        except AttributeError:
-            pass
-        except Exception:
-            pass
+        # 否则，遍历所有子节点寻找代码块
+        for i in range(ctx.getChildCount()):
+            child = ctx.getChild(i)
+            # 寻找任何带有 'body', 'statement', 'instruction' 字样的节点
+            if any(k in type(child).__name__.lower() for k in ['body', 'stmt', 'list']):
+                res = self.visit(child)
+                if res: return res if isinstance(res, list) else [res]
 
-        # 路线 3：终极兜底方案 -> 遍历所有子节点，谁长得像代码块就解析谁
-        try:
-            children = getattr(ctx, 'children', [])
-            for child in children:
-                class_name = type(child).__name__.lower()
-                if 'statement_list' in class_name or 'body' in class_name:
-                    res = self.visit(child)
-                    if isinstance(res, list):  # 确保提取出来的是语句列表
-                        return res
-        except Exception:
-            pass
-
-        # 如果实在找不到代码块，返回空列表，保证不崩溃
         return []
 
     # ==========================================
