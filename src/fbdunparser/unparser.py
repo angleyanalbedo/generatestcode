@@ -2,130 +2,115 @@ from jinja2 import Environment, DictLoader
 from typing import List, Dict, Any
 
 # ==========================================
-# 1. 定义 Jinja2 模板字典
+# 1. 严格基于 IEC61131-10 的 Jinja2 模板
 # ==========================================
 XML_TEMPLATES = {
-    "pou": """<?xml version="1.0" encoding="utf-8"?>
-<project xmlns="{{ namespace }}" 
-         xmlns:xhtml="http://www.w3.org/1999/xhtml" 
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-         xsi:schemaLocation="{{ namespace }} IEC61131_10_Ed1_0.xsd">
-  <fileHeader companyName="SyntheticDataGen" productName="LLM_AST_Unparser" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
-  <contentHeader name="LLM_Synthetic_Project">
-    <coordinateInfo>
-      <fbd>
-        <scaling x="1" y="1"/>
-      </fbd>
-    </coordinateInfo>
-  </contentHeader>
-  <types>
-    <pous>
-      <pou name="{{ pou_name }}" pouType="{{ pou_type }}">
-        <interface>
-          <localVars>
-          </localVars>
-        </interface>
-        <body>
+    "project": """<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="www.iec.ch/public/TC65SC65BWG7TF10" schemaVersion="1.0">
+  <FileHeader companyName="SyntheticDataGen" productName="LLM_AST_Unparser" productVersion="1.0"/>
+  <ContentHeader name="LLM_Synthetic_Project" creationDateTime="2024-01-01T00:00:00">
+    <CoordinateInfo>
+      <FbdScaling x="1" y="1"/>
+    </CoordinateInfo>
+  </ContentHeader>
+  <Types>
+    <GlobalNamespace>
+      <Program name="{{ pou_name }}">
+        <MainBody>
           <FBD>
 {{ networks_str }}
           </FBD>
-        </body>
-      </pou>
-    </pous>
-  </types>
-</project>""",
+        </MainBody>
+      </Program>
+    </GlobalNamespace>
+  </Types>
+</Project>""",
 
-    "network": """            <network>
+    "network": """            <Network evaluationOrder="{{ order }}">
 {{ elements_str }}
-            </network>""",
+            </Network>""",
 
-    "in_variable": """              <inVariable localId="{{ local_id }}" height="20" width="40">
-                <position x="100" y="{{ y }}" />
-                <connectionPointOut>
-                  <relPosition x="40" y="10" />
-                </connectionPointOut>
-                <expression>{{ name }}</expression>
-              </inVariable>""",
+    "data_source": """              <DataSource identifier="{{ name }}" globalId="OBJ_{{ global_id }}">
+                <RelPosition x="100" y="{{ y }}" />
+                <ConnectionPointOut connectionPointOutId="{{ out_id }}">
+                  <RelPosition x="40" y="10" />
+                </ConnectionPointOut>
+              </DataSource>""",
 
-    "out_variable": """              <outVariable localId="{{ local_id }}" height="20" width="40">
-                <position x="800" y="{{ y }}" />
-                <connectionPointIn>
-                  <relPosition x="0" y="10" />
-                  <connection refLocalId="{{ connected_id }}" />
-                </connectionPointIn>
-                <expression>{{ name }}</expression>
-              </outVariable>""",
+    "data_sink": """              <DataSink identifier="{{ name }}" globalId="OBJ_{{ global_id }}">
+                <RelPosition x="800" y="{{ y }}" />
+                <ConnectionPointIn>
+                  <RelPosition x="0" y="10" />
+                  <Connection refConnectionPointOutId="{{ connected_out_id }}" />
+                </ConnectionPointIn>
+              </DataSink>""",
 
-    "block": """              <block localId="{{ local_id }}" typeName="{{ type_name }}" height="{{ height }}" width="{{ width }}">
-                <position x="{{ x }}" y="{{ y }}" />
-                <inputVariables>
+    "block": """              <Block typeName="{{ type_name }}" globalId="OBJ_{{ global_id }}">
+                <RelPosition x="{{ x }}" y="{{ y }}" />
+                <InputVariables>
 {% for pin in inputs %}
-                  <variable formalParameter="{{ pin.name }}">
-                    <connectionPointIn>
-                      <relPosition x="0" y="{{ pin.y }}" />
-                      <connection refLocalId="{{ pin.ref_id }}" />
-                    </connectionPointIn>
-                  </variable>
+                  <InputVariable parameterName="{{ pin.name }}">
+                    <ConnectionPointIn>
+                      <RelPosition x="0" y="{{ pin.y }}" />
+                      <Connection refConnectionPointOutId="{{ pin.ref_out_id }}" />
+                    </ConnectionPointIn>
+                  </InputVariable>
 {% endfor %}
-                </inputVariables>
-                <inOutVariables/>
-                <outputVariables>
-                  <variable formalParameter="OUT">
-                    <connectionPointOut>
-                      <relPosition x="{{ width }}" y="{{ out_y }}" />
-                    </connectionPointOut>
-                  </variable>
-                </outputVariables>
-              </block>"""
+                </InputVariables>
+                <OutputVariables>
+                  <OutputVariable parameterName="OUT">
+                    <ConnectionPointOut connectionPointOutId="{{ out_id }}">
+                      <RelPosition x="{{ width }}" y="{{ out_y }}" />
+                    </ConnectionPointOut>
+                  </OutputVariable>
+                </OutputVariables>
+              </Block>"""
 }
 
 
 class FBDXmlUnparser:
     """
-    ST AST 到 PLCopen XML (FBD) 的还原器 (基于 Jinja2 模板渲染)
+    严格基于 IEC61131_10_Ed1_0.xsd 的 FBD 还原器
     """
 
     def __init__(self):
-        self.local_id_counter = 0
+        self.id_counter = 0
         self.current_y = 50
-
-        # 初始化 Jinja2 环境
+        self.network_order = 0
         self.env = Environment(loader=DictLoader(XML_TEMPLATES), trim_blocks=True, lstrip_blocks=True)
 
-    def get_id(self) -> int:
-        self.local_id_counter += 1
-        return self.local_id_counter
+    def get_id(self) -> str:
+        """生成全局唯一的数字 ID，用于 globalId 和 connectionPointOutId"""
+        self.id_counter += 1
+        return str(self.id_counter)
 
     def render(self, template_name: str, **kwargs) -> str:
-        """辅助方法：渲染指定的模板"""
         template = self.env.get_template(template_name)
         return template.render(**kwargs)
 
     # ==========================================
-    # 2. 生成完整的 POU 结构
+    # 2. 生成 Project 根结构
     # ==========================================
     def unparse_pou(self, pou_node: Dict[str, Any]) -> str:
         if not pou_node or "unit_type" not in pou_node:
             return ""
 
         pou_name = pou_node.get("name", "GeneratedPOU")
-        pou_type = pou_node.get("unit_type", "program").lower()
 
         body_ast = pou_node.get("body", [])
         if not isinstance(body_ast, list):
             body_ast = [body_ast]
 
-        networks_xml = filter(None, [self.unparse_network(stmt) for stmt in body_ast])
+        # 遍历解析生成 Network 列表
+        networks_xml = []
+        for stmt in body_ast:
+            net = self.unparse_network(stmt)
+            if net:
+                networks_xml.append(net)
+
         networks_str = "\n".join(networks_xml)
 
-        # 这里使用 XSD 文件中定义的目标命名空间 targetNamespace 
-        namespace = "www.iec.ch/public/TC65SC65BWG7TF10"
-
-        return self.render("pou",
-                           namespace=namespace,
-                           pou_name=pou_name,
-                           pou_type=pou_type,
-                           networks_str=networks_str)
+        return self.render("project", pou_name=pou_name, networks_str=networks_str)
 
     # ==========================================
     # 3. 解析 Network
@@ -133,14 +118,15 @@ class FBDXmlUnparser:
     def unparse_network(self, stmt_node: Dict[str, Any]) -> str:
         if not isinstance(stmt_node, dict): return ""
         self.elements_xml = []
-        stmt_type = stmt_node.get("stmt_type")
         self.current_y += 80
+        stmt_type = stmt_node.get("stmt_type")
 
         if stmt_type == "assign":
             right_expr = stmt_node.get("value")
+            # 注意：新版解析表达式返回的是输出引脚的 ID (out_id)，而不是模块本身的 ID
             right_out_id = self._parse_expr(right_expr)
             target_name = stmt_node.get("target", {}).get("name", "UNKNOWN")
-            self._build_out_variable(target_name, right_out_id)
+            self._build_data_sink(target_name, right_out_id)
 
         elif stmt_type == "if":
             self._parse_if_to_sel(stmt_node)
@@ -149,86 +135,93 @@ class FBDXmlUnparser:
 
         if not self.elements_xml: return ""
 
+        self.network_order += 1
         elements_str = "\n".join(self.elements_xml)
-        return self.render("network", elements_str=elements_str)
+        return self.render("network", order=self.network_order, elements_str=elements_str)
 
-    def _build_out_variable(self, target_name: str, connected_id: int):
-        out_xml = self.render("out_variable",
-                              local_id=self.get_id(),
+    def _build_data_sink(self, target_name: str, connected_out_id: str):
+        """对应 XSD 中的 DataSink (原 outVariable)"""
+        out_xml = self.render("data_sink",
+                              global_id=self.get_id(),
                               y=self.current_y,
-                              connected_id=connected_id,
+                              connected_out_id=connected_out_id,
                               name=target_name)
         self.elements_xml.append(out_xml)
 
     # ==========================================
-    # 4. 解析表达式 (复用通用 Block 模板)
+    # 4. 解析表达式 -> 必须返回引脚的 ConnectionPointOutId
     # ==========================================
-    def _parse_expr(self, expr: Dict[str, Any]) -> int:
-        if not expr: return 0
-        if isinstance(expr, str): return 0
+    def _parse_expr(self, expr: Dict[str, Any]) -> str:
+        if not expr: return "0"
+        if isinstance(expr, str): return "0"
+
         expr_type = expr.get("expr_type")
         current_node_y = self.current_y
 
-        # 处理变量/常量
         if expr_type in ("var", "literal"):
-            var_id = self.get_id()
             name = expr.get("name", expr.get("value", ""))
-            in_xml = self.render("in_variable", local_id=var_id, y=current_node_y, name=name)
-            self.elements_xml.append(in_xml)
-            return var_id
+            global_id = self.get_id()
+            out_pin_id = self.get_id()  # 必须给输出引脚分配独立ID
 
-        # 处理一元操作 (NOT 等)
+            in_xml = self.render("data_source",
+                                 global_id=global_id,
+                                 out_id=out_pin_id,
+                                 y=current_node_y,
+                                 name=name)
+            self.elements_xml.append(in_xml)
+            return out_pin_id  # 返回引脚ID供下一步连线
+
         elif expr_type == "unaryop":
             op = expr.get("op", "").upper()
-            operand_id = self._parse_expr(expr.get("operand"))
-            block_id = self.get_id()
-            inputs = [{"name": "IN", "y": 20, "ref_id": operand_id}]
+            operand_out_id = self._parse_expr(expr.get("operand"))
 
-            block_xml = self.render("block", local_id=block_id, type_name=op, height=40, width=40,
-                                    x=300, y=current_node_y, out_y=20, inputs=inputs)
+            global_id = self.get_id()
+            out_pin_id = self.get_id()
+            inputs = [{"name": "IN", "y": 20, "ref_out_id": operand_out_id}]
+
+            block_xml = self.render("block", global_id=global_id, out_id=out_pin_id, type_name=op,
+                                    height=40, width=40, x=300, y=current_node_y, out_y=20, inputs=inputs)
             self.elements_xml.append(block_xml)
-            return block_id
+            return out_pin_id
 
-        # 处理二元操作 (+, -, AND, OR 等)
         elif expr_type == "binop":
             op = expr.get("op", "").upper()
-            left_id = self._parse_expr(expr.get("left"))
+            left_out_id = self._parse_expr(expr.get("left"))
             self.current_y += 40
-            right_id = self._parse_expr(expr.get("right"))
-            block_id = self.get_id()
+            right_out_id = self._parse_expr(expr.get("right"))
 
+            global_id = self.get_id()
+            out_pin_id = self.get_id()
             inputs = [
-                {"name": "IN1", "y": 20, "ref_id": left_id},
-                {"name": "IN2", "y": 40, "ref_id": right_id}
+                {"name": "IN1", "y": 20, "ref_out_id": left_out_id},
+                {"name": "IN2", "y": 40, "ref_out_id": right_out_id}
             ]
-            block_xml = self.render("block", local_id=block_id, type_name=op, height=60, width=40,
-                                    x=500, y=current_node_y, out_y=30, inputs=inputs)
+            block_xml = self.render("block", global_id=global_id, out_id=out_pin_id, type_name=op,
+                                    height=60, width=40, x=500, y=current_node_y, out_y=30, inputs=inputs)
             self.elements_xml.append(block_xml)
-            return block_id
+            return out_pin_id
 
-        # 处理函数调用
         elif expr_type == "call":
             func_name = expr.get("func_name", "UNKNOWN_FUNC")
             args = expr.get("args", [])
 
             inputs = []
             for i, arg in enumerate(args):
-                arg_id = self._parse_expr(arg)
-                inputs.append({"name": f"IN{i + 1}", "y": 20 + i * 20, "ref_id": arg_id})
+                arg_out_id = self._parse_expr(arg)
+                inputs.append({"name": f"IN{i + 1}", "y": 20 + i * 20, "ref_out_id": arg_out_id})
                 self.current_y += 30
 
-            block_id = self.get_id()
+            global_id = self.get_id()
+            out_pin_id = self.get_id()
             block_height = max(40, len(args) * 20 + 20)
-            block_xml = self.render("block", local_id=block_id, type_name=func_name, height=block_height, width=60,
-                                    x=600, y=current_node_y, out_y=20, inputs=inputs)
+
+            block_xml = self.render("block", global_id=global_id, out_id=out_pin_id, type_name=func_name,
+                                    height=block_height, width=60, x=600, y=current_node_y, out_y=20, inputs=inputs)
             self.elements_xml.append(block_xml)
-            return block_id
+            return out_pin_id
 
-        return 0
+        return "0"
 
-    # ==========================================
-    # 5. IF 转换为 SEL 选择器
-    # ==========================================
     def _parse_if_to_sel(self, stmt_node: Dict[str, Any]):
         cond = stmt_node.get("cond")
         then_body = stmt_node.get("then_body", [])
@@ -243,19 +236,22 @@ class FBDXmlUnparser:
                 target_else = else_stmt.get("target", {}).get("name")
 
                 if target_then == target_else and target_then:
-                    g_id = self._parse_expr(cond)
+                    g_out_id = self._parse_expr(cond)
                     self.current_y += 30
-                    in1_id = self._parse_expr(then_stmt.get("value"))
+                    in1_out_id = self._parse_expr(then_stmt.get("value"))
                     self.current_y += 30
-                    in0_id = self._parse_expr(else_stmt.get("value"))
+                    in0_out_id = self._parse_expr(else_stmt.get("value"))
 
-                    sel_block_id = self.get_id()
+                    global_id = self.get_id()
+                    sel_out_pin_id = self.get_id()
+
                     inputs = [
-                        {"name": "G", "y": 20, "ref_id": g_id},
-                        {"name": "IN0", "y": 40, "ref_id": in0_id},
-                        {"name": "IN1", "y": 60, "ref_id": in1_id}
+                        {"name": "G", "y": 20, "ref_out_id": g_out_id},
+                        {"name": "IN0", "y": 40, "ref_out_id": in0_out_id},
+                        {"name": "IN1", "y": 60, "ref_out_id": in1_out_id}
                     ]
-                    sel_xml = self.render("block", local_id=sel_block_id, type_name="SEL", height=80, width=40,
-                                          x=500, y=self.current_y - 60, out_y=30, inputs=inputs)
+                    sel_xml = self.render("block", global_id=global_id, out_id=sel_out_pin_id, type_name="SEL",
+                                          height=80, width=40, x=500, y=self.current_y - 60, out_y=30, inputs=inputs)
+
                     self.elements_xml.append(sel_xml)
-                    self._build_out_variable(target_then, sel_block_id)
+                    self._build_data_sink(target_then, sel_out_pin_id)
