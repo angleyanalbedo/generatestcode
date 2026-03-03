@@ -9,13 +9,17 @@ from src.stparser.anltr4 import STParser
 def test_st_to_fbd_pipeline(
         input_folder: str = "../resource/st_source_code",
         xsd_rel_path: str = "../resource/xsd/IEC61131_10_Ed1_0.xsd",
-):
+        output_rel_dir: str = "../data/fbd_output",):
     # 1. 初始化所有组件
     parser = STParser()
     unparser = FBDXmlUnparser()
 
     input_path = Path(input_folder)
     xsd_path = Path(xsd_rel_path)
+    output_dir = Path(output_rel_dir)
+
+    if not output_dir.exists():
+        os.mkdir(output_dir)
 
     if not input_path.exists():
         print(f"❌ 错误: 源码文件夹 '{input_folder}' 不存在")
@@ -92,7 +96,21 @@ def test_st_to_fbd_pipeline(
                     "error": " | ".join(errors[:3])  # 只记录前3个校验错误避免刷屏
                 })
                 continue
-
+            # ==========================================
+            # 🌟 阶段 4: 保存成功的 XML 文件 (新增)
+            # ==========================================
+            try:
+                # 提取原文件名 (例如 AIN1.ST -> AIN1) 并加上 .xml 后缀
+                out_file_path = output_dir / f"{file_path.stem}.xml"
+                # 写入文件，指定 utf-8 编码防止中文注释乱码
+                out_file_path.write_text(xml_output, encoding="utf-8")
+            except Exception as e:
+                failure_details.append({
+                    "file": file_path.name,
+                    "stage": "File Save Error",
+                    "error": f"写入本地文件失败: {str(e)}"
+                })
+                continue
             # 如果走到这里，说明全链路成功！
             stats["success"] += 1
 
