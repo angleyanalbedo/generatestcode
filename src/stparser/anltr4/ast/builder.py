@@ -1,161 +1,628 @@
-from typing import List,Dict,Any
+from __future__ import annotations
 
-from src.stparser.anltr4.generated.IEC61131Parser import IEC61131Parser
-from src.stparser.anltr4.generated.IEC61131ParserVisitor import IEC61131ParserVisitor
+from typing import List, Optional
 
-# ---------------------------------------------------------
-# 2. 自定义 AST 构建器 (Visitor 模式)
-# ---------------------------------------------------------
+from antlr4 import ParserRuleContext
 
-class STAstBuilder(IEC61131ParserVisitor):
+from ..generated.IEC61131ParserVisitor import IEC61131ParserVisitor
+from ..generated.IEC61131Parser import IEC61131Parser
+
+from .nodes import (
+    SourceLocation,
+    ProgramDecl,
+    FBDecl,
+    VarDecl,
+    Stmt,
+    Expr,
+    Assignment,
+    IfStmt,
+    ForStmt,
+    CallStmt,
+    VarRef,
+    Literal,
+    BinOp,
+    ArrayAccess,
+    FieldAccess,
+    CallExpr,  # 新增
+    CaseStmt,
+    CaseEntry,
+    CaseCond,
+    WhileStmt,
+    RepeatStmt,
+    # 如果你在 nodes.py 里有 UnaryOp，可以自己改成用 UnaryOp
+    # UnaryOp,
+)
+
+
+class ASTBuilder(IEC61131ParserVisitor):
     """
-    纯字典版 AST 构建器。
-    将 ANTLR Parse Tree 转换为松耦合的 Dictionary，完美兼容旧版数据处理流水线。
+    基于 IEC61131Parser.g4 的简化 AST 构造器。
+
+    当前支持：
+      - PROGRAM / FUNCTION_BLOCK 定义
+      - VAR 变量声明（含 VAR_INPUT / VAR_OUTPUT / VAR_IN_OUT / VAR_GLOBAL 等）
+      - 语句：赋值、调用(invocation)、IF、FOR
+      - 表达式：一元/二元运算（+ - * / MOD DIV 比较 布尔运算 等）
+
+    暂时忽略：
+      - SFC / IL / 类 / 接口 / 方法 / CASE / WHILE / REPEAT 等复杂结构
+      - 复杂类型初始化（initializations）
     """
 
-    # ==========================================
-    # 🌟 核心防雷：万能文本提取器
-    # ==========================================
-    def safe_text(self, obj) -> str:
+    def __init__(self, filename: str = "<memory>"):
+        self.filename = filename
+
+    # ========= 工具函数 =========
+
+    def _loc(self, ctx: ParserRuleContext) -> SourceLocation:
+        token = ctx.start
+        return SourceLocation(
+            file=self.filename,
+            line=token.line,
+            column=getattr(token, "column", 0),
+        )
+
+    # ========= 顶层入口 =========
+
+    def visitStart(self, ctx: IEC61131Parser.StartContext) -> List[ProgramDecl | FBDecl]:
         """
-        终极防弹文本提取：自动处理属性、方法、Token、Context
+        start
+          : (library_element_declaration)* ;
         """
-        if obj is None: return ""
-
-        # 如果 obj 本身已经是字符串了（例如之前处理过的）
-        if isinstance(obj, str): return obj
-
-        try:
-            # 1. 如果是方法，尝试调用它获取节点
-            if callable(obj):
-                # 针对 ANTLR：如果它是 Token 节点，调用会失败，我们捕获它
-                temp = obj()
-                if temp is not None:
-                    obj = temp
-
-            # 2. 如果是 Context (有 getText 方法)
-            if hasattr(obj, 'getText'):
-                return obj.getText()
-
-            # 3. 如果是 Token (有 text 属性)
-            if hasattr(obj, 'text'):
-                return obj.text
-
-            # 4. 递归处理列表 (例如 identifier_list)
-            if isinstance(obj, list):
-                return "".join([self.safe_text(i) for i in obj])
-
-        except Exception as e:
-            # 这里的诊断能帮你定位是哪个 Token 出了问题
-            print(f"[AST诊断] safe_text 在处理 {type(obj)} 时报错: {e}")
-
-        return str(obj)
-
-
-    # ==========================================
-    # 1. 顶层结构 (Program, Function Block)
-    # ==========================================
-
-    def visitStart(self, ctx: IEC61131Parser.StartContext) -> List[Dict[str, Any]]:
-        pous = []
+        pous: List[ProgramDecl | FBDecl] = []
         for elem in ctx.library_element_declaration():
             ast = self.visit(elem)
-            if ast:
-                # 因为一个文件可能有多个 Program/FB，这里平铺到一个列表中
-                if isinstance(ast, list):
-                    pous.extend(ast)
-                else:
-                    pous.append(ast)
+            if ast is None:
+                continue
+            if isinstance(ast, (ProgramDecl, FBDecl)):
+                pous.append(ast)
+            elif isinstance(ast, list):
+                for a in ast:
+                    if isinstance(a, (ProgramDecl, FBDecl)):
+                        pous.append(a)
         return pous
 
-    # ==========================================
-    # 1. 顶层 POU 结构 (修复了 Body 提取逻辑)
-    # ==========================================
+    def visitLibrary_element_declaration(
+            self, ctx: IEC61131Parser.Library_element_declarationContext
+    ):
+        """
+        library_element_declaration
+          : data_type_declaration
+          | function_declaration
+          | class_declaration
+          | interface_declaration
+          | function_block_declaration
+          | program_declaration
+          | configuration_declaration
+          ;
+        """
+        if ctx.program_declaration():
+            return self.visit(ctx.program_declaration())
+        if ctx.function_block_declaration():
+            return self.visit(ctx.function_block_declaration())
+        # 其它暂不处理
+        return None
 
-    def visitProgram_declaration(self, ctx: IEC61131Parser.Program_declarationContext) -> Dict[str, Any]:
-        # 💡 正确做法：直接调用 ANTLR 生成的方法获取 Context 对象
-        body_ctx = ctx.body() if hasattr(ctx, 'body') else None
+    # ========= POU：PROGRAM / FUNCTION_BLOCK =========
 
-        return {
-            "unit_type": "PROGRAM",
-            "name": self.safe_text(ctx.identifier),
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            # 💡 只有通过 visit(body_ctx)，才能触发下面的 visitBody 逻辑
-            "body": self.visit(body_ctx) if body_ctx else []
-        }
+    def visitProgram_declaration(
+            self, ctx: IEC61131Parser.Program_declarationContext
+    ) -> ProgramDecl:
+        """
+        program_declaration
+          : PROGRAM identifier=IDENTIFIER
+            var_decls
+            action*
+            body
+            END_PROGRAM
+          ;
+        """
+        name = ctx.identifier.text
 
-    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[
-        str, Any]:
-        body_ctx = ctx.body() if hasattr(ctx, 'body') else None
-        return {
-            "unit_type": "FUNCTION_BLOCK",
-            "name": self.safe_text(ctx.identifier),
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            "body": self.visit(body_ctx) if body_ctx else []
-        }
+        vars_: List[VarDecl] = []
+        if ctx.var_decls():
+            vars_ = self.visit(ctx.var_decls())
 
-    def visitFunction_declaration(self, ctx: IEC61131Parser.Function_declarationContext) -> Dict[str, Any]:
-        # 💡 注意：Function 通常使用 funcBody()
-        body_ctx = ctx.funcBody() if hasattr(ctx, 'funcBody') else None
-        return {
-            "unit_type": "FUNCTION",
-            "name": self.safe_text(ctx.identifier),
-            "return_type": self.safe_text(ctx.elementary_type_name) or "UNKNOWN",
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            "body": self.visit(body_ctx) if body_ctx else []
-        }
+        body_stmts: List[Stmt] = []
+        if ctx.body():
+            body_stmts = self._extract_body_statements(ctx.body())
 
-    # ==========================================
-    # 2. 核心中转站 (解决 Body 依然为空的真凶)
-    # ==========================================
+        return ProgramDecl(
+            name=name,
+            vars=vars_,
+            body=body_stmts,
+            loc=self._loc(ctx),
+        )
 
-    def visitBody(self, ctx: IEC61131Parser.BodyContext):
-        """处理 PROGRAM 和 FB 的身体部分"""
-        # 必须把访问权交给 statement_list，否则链条在此中断返回 None
-        if hasattr(ctx, 'statement_list') and ctx.statement_list():
-            return self.visit(ctx.statement_list())
+    def visitFunction_block_declaration(
+            self, ctx: IEC61131Parser.Function_block_declarationContext
+    ) -> FBDecl:
+        """
+        function_block_declaration
+          : FUNCTION_BLOCK (FINAL | ABSTRACT)?
+            identifier = IDENTIFIER
+            (EXTENDS inherit=IDENTIFIER)?
+            (IMPLEMENTS interfaces=identifier_list)?
+            var_decls
+            methods
+            action*
+            body
+            END_FUNCTION_BLOCK
+          ;
+        """
+        name = ctx.identifier.text
+
+        vars_: List[VarDecl] = []
+        if ctx.var_decls():
+            vars_ = self.visit(ctx.var_decls())
+
+        body_stmts: List[Stmt] = []
+        if ctx.body():
+            body_stmts = self._extract_body_statements(ctx.body())
+
+        return FBDecl(
+            name=name,
+            vars=vars_,
+            body=body_stmts,
+            loc=self._loc(ctx),
+        )
+
+    def _extract_body_statements(
+            self, body_ctx: IEC61131Parser.BodyContext
+    ) -> List[Stmt]:
+        """
+        body :
+            sfc
+          | IL_CODE ilBody
+          | statement_list
+          ;
+        这里只处理 statement_list，SFC/IL 暂时忽略。
+        """
+        if body_ctx.statement_list():
+            return self.visit(body_ctx.statement_list())
         return []
 
-    def visitFuncBody(self, ctx: IEC61131Parser.FuncBodyContext):
-        """处理 FUNCTION 的身体部分"""
-        if hasattr(ctx, 'statement_list') and ctx.statement_list():
-            return self.visit(ctx.statement_list())
-        return []
+    # ========= 变量声明 =========
 
-    def visitStatement_list(self, ctx: IEC61131Parser.Statement_listContext) -> List[Dict[str, Any]]:
-        """最终收割所有语句"""
-        stmts = []
+    def visitVar_decls(self, ctx: IEC61131Parser.Var_declsContext) -> List[VarDecl]:
+        """
+        var_decls
+          : (var_decl)* ;
+        """
+        vars_: List[VarDecl] = []
+        for vd in ctx.var_decl():
+            decls = self.visit(vd)
+            if decls:
+                vars_.extend(decls)
+        return vars_
+
+    def visitVar_decl(self, ctx: IEC61131Parser.Var_declContext) -> List[VarDecl]:
+        """
+        var_decl
+          : variable_keyword
+            var_decl_inner
+            END_VAR
+          ;
+        """
+        storage = "VAR"
+        vk = ctx.variable_keyword()
+        if vk is not None and vk.getChildCount() > 0:
+            # variable_keyword 的第一个子节点一般是 VAR / VAR_INPUT / VAR_OUTPUT 等
+            storage = vk.getChild(0).getText()
+
+        inner = ctx.var_decl_inner()
+        decls: List[VarDecl] = []
+
+        if inner is None:
+            return []
+
+        # var_decl_inner :
+        #   (identifier_list COLON td=type_declaration SEMICOLON)* ;
+        type_list = inner.type_declaration()
+        id_list_list = inner.identifier_list()
+
+        for id_list_ctx, type_ctx in zip(id_list_list, type_list):
+            type_str = type_ctx.getText()
+            # identifier_list : names+=variable_names (COMMA names+=variable_names)* ;
+            for name_ctx in id_list_ctx.variable_names():
+                name = name_ctx.getText()
+                decls.append(
+                    VarDecl(
+                        name=name,
+                        type=type_str,
+                        storage=storage,
+                        init_expr=None,  # 初始化先不处理
+                        loc=self._loc(ctx),
+                    )
+                )
+        return decls
+
+    # ========= 语句列表 & 语句 =========
+
+    def visitStatement_list(
+            self, ctx: IEC61131Parser.Statement_listContext
+    ) -> List[Stmt]:
+        """
+        statement_list
+          : (statement)* ;
+        """
+        stmts: List[Stmt] = []
         for sctx in ctx.statement():
-            res = self.visit(sctx)
-            if res:
-                # 兼容处理：确保收集到的是字典格式的语句
-                if isinstance(res, list):
-                    stmts.extend(res)
-                else:
-                    stmts.append(res)
-        return stmts  # 👈 这里的 return 决定了顶层 body 是否有数据
+            stmt = self.visit(sctx)
+            if isinstance(stmt, Stmt):
+                stmts.append(stmt)
+        return stmts
 
-    # 函数/功能块调用提取 (彻底解决 Symbolic_variableContext 和 NameContext 报错)
-    def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> Dict[str, Any]:
-        # 优先尝试获取 id_，如果没有则获取 symbolic_variable
-        func_name = self.safe_text(getattr(ctx, "id_", None))
-        if not func_name:
-            func_name = self.safe_text(getattr(ctx, "symbolic_variable", None))
+    def visitStatement(self, ctx: IEC61131Parser.StatementContext) -> Optional[Stmt]:
+        """
+        statement :
+              assignment_statement SEMICOLON
+            | mult_assignment_statement SEMICOLON
+            | invocation_statement SEMICOLON
+            | return_statement SEMICOLON
+            | jump_statement SEMICOLON
+            | label_statement SEMICOLON
+            | if_statement SEMICOLON?
+            | case_statement SEMICOLON?
+            | for_statement SEMICOLON?
+            | while_statement SEMICOLON?
+            | repeat_statement SEMICOLON?
+            | exit_statement SEMICOLON
+            | continue_statement SEMICOLON
+            | empty_statement
+          ;
+        """
+        if ctx.assignment_statement():
+            return self.visit(ctx.assignment_statement())
+        if ctx.invocation_statement():
+            return self.visit(ctx.invocation_statement())
+        if ctx.if_statement():
+            return self.visit(ctx.if_statement())
+        if ctx.case_statement():
+            return self.visit(ctx.case_statement())
+        if ctx.for_statement():
+            return self.visit(ctx.for_statement())
+        if ctx.while_statement():
+            return self.visit(ctx.while_statement())
+        if ctx.repeat_statement():
+            return self.visit(ctx.repeat_statement())
+        return None
 
-        args = []
+    # --- 赋值语句 ---
+
+    def visitAssignment_statement(
+            self, ctx: IEC61131Parser.Assignment_statementContext
+    ) -> Assignment:
+        """
+        assignment_statement
+          : left=variable op=(ASSIGN_ATTEMPT|RASSIGN|ASSIGN|INCREAE|DECREASE) right=expression
+          ;
+        这里统一当成普通赋值（忽略 op 的差别）。
+        """
+        target_expr = self.visit(ctx.left)
+        value_expr = self.visit(ctx.right)
+        return Assignment(
+            target=target_expr,
+            value=value_expr,
+            loc=self._loc(ctx),
+        )
+
+    # --- 调用语句（FB/函数调用） ---
+
+    def visitInvocation_statement(
+            self, ctx: IEC61131Parser.Invocation_statementContext
+    ) -> CallStmt:
+        """
+        invocation_statement
+          : invocation
+          ;
+        """
+        return self.visit(ctx.invocation())
+
+    def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> CallStmt:
+        """
+        invocation
+        : id=symbolic_variable LPAREN
+            ( (expression | param_assignment)
+                (COMMA (expression | param_assignment))* )?
+            RPAREN
+        ;
+        """
+        # 有的生成器会把 label id 变成 id_
+        if hasattr(ctx, "id_") and ctx.id_ is not None:
+            fb_name = ctx.id_.getText()
+        else:
+            # 兜底：直接用第一个 symbolic_variable 作为名字
+            fb_name = ctx.symbolic_variable().getText()
+
+        args: List[Expr] = []
+
         for pa in ctx.param_assignment():
-            args.append(self.visit(pa))
+            expr = self.visit(pa)
+            if isinstance(expr, Expr):
+                args.append(expr)
+
         for e in ctx.expression():
-            args.append(self.visit(e))
+            expr = self.visit(e)
+            if isinstance(expr, Expr):
+                args.append(expr)
 
-        return {
-            "stmt_type": "call",
-            "func_name": func_name,
-            "args": args
-        }
+        return CallStmt(
+            fb_name=fb_name,
+            args=args,
+            loc=self._loc(ctx),
+        )
 
-    # 作为表达式的调用提取
-    def visitPrimary_expression(self, ctx: IEC61131Parser.Primary_expressionContext) -> Dict[str, Any]:
+    def visitParam_assignment(
+            self, ctx: IEC61131Parser.Param_assignmentContext
+    ) -> Expr:
+        """
+        param_assignment
+          : id=IDENTIFIER ARROW_RIGHT v=variable
+          | (id=IDENTIFIER ASSIGN)? expression
+          ;
+        AST 里我们只关心“被传入的值/变量”，忽略参数名。
+        """
+        if ctx.v:
+            return self.visit(ctx.v)
+        if ctx.expression():
+            return self.visit(ctx.expression())
+        raise RuntimeError("Unexpected param_assignment without value")
+
+    # --- IF 语句 ---
+    def visitIf_statement(self, ctx: IEC61131Parser.If_statementContext) -> IfStmt:
+        """
+        if_statement
+        : IF cond+=expression THEN thenlist+=statement_list
+            (ELSEIF cond+=expression THEN thenlist+=statement_list)*
+            (ELSE elselist = statement_list)?
+            END_IF SEMICOLON?
+        ;
+        """
+
+        # 至少有一个 IF ... THEN
+        if not ctx.cond or not ctx.thenlist:
+            raise RuntimeError("if_statement without condition/then body")
+
+        # -------- 主 IF 分支 --------
+        # cond[0] / thenlist[0] 对应最前面的 IF
+        main_cond = self.visit(ctx.cond[0])
+        main_then = self.visit(ctx.thenlist[0])  # statement_list -> List[Stmt]
+
+        # -------- ELSIF 分支 --------
+        elif_branches = []
+        cond_list = ctx.cond
+        then_list = ctx.thenlist
+        # 从索引 1 开始是各个 ELSIF
+        for i in range(1, len(cond_list)):
+            c = self.visit(cond_list[i])
+            t = self.visit(then_list[i])
+            elif_branches.append((c, t))
+
+        # -------- ELSE 分支（可选）--------
+        else_body = []
+        # 这里注意：elselist 是一个属性（Statement_listContext），不是方法
+        if ctx.elselist is not None:
+            else_body = self.visit(ctx.elselist)  # -> List[Stmt]
+
+        return IfStmt(
+            cond=main_cond,
+            then_body=main_then,
+            elif_branches=elif_branches,  # 如果 IfStmt 没这个字段，要在 nodes.py 里加上
+            else_body=else_body,
+            loc=self._loc(ctx),
+        )
+
+    def visitCase_statement(self, ctx: IEC61131Parser.Case_statementContext) -> CaseStmt:
+        """
+        case_statement
+        : CASE cond=expression OF
+            (case_entry)+
+            (ELSE COLON? elselist=statement_list)?
+            END_CASE
+        ;
+        """
+
+        # selector expression
+        selector = self.visit(ctx.cond)
+
+        entries: List[CaseEntry] = []
+        for ectx in ctx.case_entry():
+            # case_entry
+            #   : case_condition (COMMA case_condition)*
+            #     COLON statement_list
+            #   ;
+            conds: List[CaseCond] = []
+            for cctx in ectx.case_condition():
+                conds.append(CaseCond(text=cctx.getText(), loc=self._loc(cctx)))
+
+            body = self.visit(ectx.statement_list())  # -> List[Stmt]
+
+            entries.append(
+                CaseEntry(
+                    conds=conds,
+                    body=body,
+                    loc=self._loc(ectx),
+                )
+            )
+
+        else_body: List[Stmt] = []
+        # 注意：elselist 在 g4 里是命名字段：elselist=statement_list
+        if ctx.elselist is not None:
+            else_body = self.visit(ctx.elselist)
+
+        return CaseStmt(
+            cond=selector,
+            entries=entries,
+            else_body=else_body,
+            loc=self._loc(ctx),
+        )
+
+    # --- FOR 语句 ---
+
+    def visitFor_statement(self, ctx: IEC61131Parser.For_statementContext) -> ForStmt:
+        """
+        for_statement
+          : FOR var=IDENTIFIER ASSIGN
+              begin=expression TO endPosition=expression
+              (BY by = expression)?
+              DO statement_list END_FOR
+          ;
+        """
+        var_name = ctx.var.text
+        start_expr = self.visit(ctx.begin)
+        end_expr = self.visit(ctx.endPosition)
+        step_expr: Optional[Expr] = self.visit(ctx.by) if ctx.by else None
+        body_stmts = self.visit(ctx.statement_list())
+
+        return ForStmt(
+            var=var_name,
+            start=start_expr,
+            end=end_expr,
+            step=step_expr,
+            body=body_stmts,
+            loc=self._loc(ctx),
+        )
+
+    def visitWhile_statement(self, ctx: IEC61131Parser.While_statementContext) -> WhileStmt:
+        """
+        while_statement
+        : WHILE expression DO statement_list END_WHILE
+        ;
+        """
+        cond = self.visit(ctx.expression())
+        body = self.visit(ctx.statement_list())
+        return WhileStmt(cond=cond, body=body, loc=self._loc(ctx))
+
+    def visitRepeat_statement(self, ctx: IEC61131Parser.Repeat_statementContext) -> RepeatStmt:
+        """
+        repeat_statement
+        : REPEAT statement_list UNTIL expression END_REPEAT
+        ;
+        """
+        body = self.visit(ctx.statement_list())
+        until = self.visit(ctx.expression())
+        return RepeatStmt(body=body, until=until, loc=self._loc(ctx))
+
+    # ========= 表达式 =========
+    # 表达式在 grammar 里有一堆带 #label 的备选，ANTLR 会生成对应的 *Context，
+    # 我们给它们写对应的 visitXXX 方法。
+
+    # unaryMinusExpr : MINUS sub=expression
+    def visitUnaryMinusExpr(
+            self, ctx: IEC61131Parser.UnaryMinusExprContext
+    ) -> Expr:
+        sub = self.visit(ctx.sub)
+        # 如果你以后有 UnaryOp，可以改成 UnaryOp("-", sub)
+        return BinOp(
+            op="UMINUS",
+            left=Literal(value="0", type="NUM", loc=self._loc(ctx)),
+            right=sub,
+            loc=self._loc(ctx),
+        )
+
+    # unaryNegateExpr : NOT sub=expression
+    def visitUnaryNegateExpr(
+            self, ctx: IEC61131Parser.UnaryNegateExprContext
+    ) -> Expr:
+        sub = self.visit(ctx.sub)
+        return BinOp(
+            op="NOT",
+            left=sub,
+            right=Literal(value="1", type="BOOL", loc=self._loc(ctx)),
+            loc=self._loc(ctx),
+        )
+
+    # parenExpr : LPAREN sub=expression RPAREN
+    def visitParenExpr(self, ctx: IEC61131Parser.ParenExprContext) -> Expr:
+        return self.visit(ctx.sub)
+
+    # binaryPowerExpr : left=expression op=POWER right=expression
+    def visitBinaryPowerExpr(
+            self, ctx: IEC61131Parser.BinaryPowerExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryModDivExpr : <assoc=right> left=expression op=(MOD|DIV) right=expression
+    def visitBinaryModDivExpr(
+            self, ctx: IEC61131Parser.BinaryModDivExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryMultExpr : left=expression op=MULT right=expression
+    def visitBinaryMultExpr(
+            self, ctx: IEC61131Parser.BinaryMultExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryPlusMinusExpr : left=expression op=(PLUS|MINUS) right=expression
+    def visitBinaryPlusMinusExpr(
+            self, ctx: IEC61131Parser.BinaryPlusMinusExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryCmpExpr : left=expression op=(<,>,<=,>=) right=expression
+    def visitBinaryCmpExpr(
+            self, ctx: IEC61131Parser.BinaryCmpExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryEqExpr : left=expression op=(=,<>) right=expression
+    def visitBinaryEqExpr(
+            self, ctx: IEC61131Parser.BinaryEqExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryAndExpr : left=expression op=(AND|AMPERSAND) right=expression
+    def visitBinaryAndExpr(
+            self, ctx: IEC61131Parser.BinaryAndExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryOrExpr : left=expression op=OR right=expression
+    def visitBinaryOrExpr(
+            self, ctx: IEC61131Parser.BinaryOrExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # binaryXORExpr : left=expression op=XOR right=expression
+    def visitBinaryXORExpr(
+            self, ctx: IEC61131Parser.BinaryXORExprContext
+    ) -> Expr:
+        return self._make_binop(ctx)
+
+    # primaryExpr : primary_expression
+    def visitPrimaryExpr(
+            self, ctx: IEC61131Parser.PrimaryExprContext
+    ) -> Expr:
+        return self.visit(ctx.primary_expression())
+
+    def _make_binop(self, ctx) -> BinOp:
+        """
+        通用二元运算构造，ctx 需要有 left / right / op 三个属性。
+        """
+        left = self.visit(ctx.left)
+        right = self.visit(ctx.right)
+        op_text = ctx.op.text
+        return BinOp(
+            op=op_text,
+            left=left,
+            right=right,
+            loc=self._loc(ctx),
+        )
+
+    # ========= primary_expression / constant / variable =========
+
+    def visitPrimary_expression(
+            self, ctx: IEC61131Parser.Primary_expressionContext
+    ) -> Expr:
+        """
+        primary_expression
+        : constant
+        | v=variable
+        | invocation
+        ;
+        """
         if ctx.constant():
             return self.visit(ctx.constant())
         if ctx.v:
@@ -163,240 +630,78 @@ class STAstBuilder(IEC61131ParserVisitor):
         if ctx.invocation():
             inv = ctx.invocation()
 
-            func_name = self.safe_text(getattr(inv, "id_", None))
-            if not func_name:
-                func_name = self.safe_text(getattr(inv, "symbolic_variable", None))
+            # 取函数/FB 名字
+            if hasattr(inv, "id_") and inv.id_ is not None:
+                func_name = inv.id_.getText()
+            else:
+                func_name = inv.symbolic_variable().getText()
 
-            args = []
-            for pa in inv.param_assignment(): args.append(self.visit(pa))
-            for e in inv.expression(): args.append(self.visit(e))
+            # 收集参数表达式（和 visitInvocation 里的逻辑类似，但这里返回 Expr）
+            args: List[Expr] = []
 
-            return {
-                "expr_type": "call",
-                "func_name": func_name,
-                "args": args
-            }
+            for pa in inv.param_assignment():
+                expr = self.visit(pa)
+                if isinstance(expr, Expr):
+                    args.append(expr)
 
-        return {"expr_type": "unknown", "text": self.safe_text(ctx)}
+            for e in inv.expression():
+                expr = self.visit(e)
+                if isinstance(expr, Expr):
+                    args.append(expr)
 
-    # ==========================================
-    # 2. 变量声明 (VAR ... END_VAR)
-    # ==========================================
+            return CallExpr(
+                func=func_name,
+                args=args,
+                loc=self._loc(inv),
+            )
 
-    def visitVar_decls(self, ctx: IEC61131Parser.Var_declsContext) -> List[Dict[str, Any]]:
-        vars_list = []
-        for vd in ctx.var_decl():
-            decls = self.visit(vd)
-            if decls:
-                vars_list.extend(decls)
-        return vars_list
+        raise RuntimeError("Unexpected primary_expression")
 
-    def visitVar_decl(self, ctx: IEC61131Parser.Var_declContext) -> List[Dict[str, Any]]:
-        storage = "VAR"
-        vk = ctx.variable_keyword()
-        if vk and vk.getChildCount() > 0:
-            storage = vk.getChild(0).getText().upper()
+    def visitConstant(self, ctx: IEC61131Parser.ConstantContext) -> Literal:
+        """
+        constant
+          : integer
+          | real
+          | string
+          | time
+          | timeofday
+          | date
+          | datetime
+          | cast
+          | bits
+          | ref_null
+          | reference_value
+          ;
+        这里只是把字面量文本原样存下来。
+        """
+        return Literal(
+            value=ctx.getText(),
+            type="CONST",
+            loc=self._loc(ctx),
+        )
 
-        inner = ctx.var_decl_inner()
-        if not inner:
-            return []
+    def visitPrimary(self, ctx):
+        """
+        兼容 visitVariable 里调用的 visitPrimary。
+        实际直接转发到已有的 visitPrimaryExpr。
+        """
+        return self.visitPrimaryExpr(ctx)
 
-        decls = []
-        for id_list_ctx, type_ctx in zip(inner.identifier_list(), inner.type_declaration()):
-            type_str = type_ctx.getText()
+    def visitVariable(self, ctx) -> Expr:
+        # 假设 grammar roughly: variable: primary ( '[' expr ']' )* ( '.' IDENT )*;
+        # base = self.visitPrimary(ctx.primary())
 
-            # 💡 提取可能的初始化表达式
-            init_value = None
-            if hasattr(inner, 'expression') and inner.expression():
-                init_value = self.visit(inner.expression())
-            elif hasattr(type_ctx, 'expression') and type_ctx.expression():
-                init_value = self.visit(type_ctx.expression())
+        # # 处理数组下标链
+        # for idx_ctx in ctx.indexExprList():  # 根据你的 grammar 实际名字调整
+        #     index_expr = self.visitExpr(idx_ctx)
+        #     base = ArrayAccess(base=base, index=index_expr, loc=self._loc(idx_ctx))
 
-            for name_ctx in id_list_ctx.variable_names():
-                decls.append({
-                    "storage": storage,
-                    "name": name_ctx.getText(),
-                    "type": type_str,
-                    "init_value": init_value
-                })
-        return decls
+        # # 处理结构体字段链
+        # for field_tok in ctx.DOT_ID_LIST():  # 例如 ".Pos", ".Status"
+        #     field_name = field_tok.getText()[1:]  # 去掉 '.'
+        #     base = FieldAccess(base=base, field=field_name, loc=self._loc(field_tok))
 
-    # ==========================================
-    # 3. 语句 (Statements)
-    # ==========================================
+        # return base
+        name = ctx.getText()
+        return VarRef(name=name, loc=self._loc(ctx))
 
-    def visitStatement_list(self, ctx: IEC61131Parser.Statement_listContext) -> List[Dict[str, Any]]:
-        stmts = []
-        for sctx in ctx.statement():
-            stmt = self.visit(sctx)
-            if stmt:
-                stmts.append(stmt)
-        return stmts
-
-    def visitAssignment_statement(self, ctx: IEC61131Parser.Assignment_statementContext) -> Dict[str, Any]:
-        return {
-            "stmt_type": "assign",
-            # target 作为表达式递归处理（兼容数组下标等）
-            "target": self.visit(ctx.left),
-            "value": self.visit(ctx.right)
-        }
-
-    def visitIf_statement(self, ctx: IEC61131Parser.If_statementContext) -> Dict[str, Any]:
-        # 提取主 IF
-        main_cond = self.visit(ctx.cond[0])
-        main_then = self.visit(ctx.thenlist[0])
-
-        # 提取 ELSIF
-        elif_branches = []
-        for i in range(1, len(ctx.cond)):
-            elif_branches.append({
-                "cond": self.visit(ctx.cond[i]),
-                "then_body": self.visit(ctx.thenlist[i])
-            })
-
-        # 提取 ELSE
-        else_body = self.visit(ctx.elselist) if ctx.elselist else []
-
-        return {
-            "stmt_type": "if",
-            "cond": main_cond,
-            "then_body": main_then,
-            "elif_branches": elif_branches,
-            "else_body": else_body
-        }
-
-    def visitCase_statement(self, ctx: IEC61131Parser.Case_statementContext) -> Dict[str, Any]:
-        entries = []
-        for ectx in ctx.case_entry():
-            conds = [cctx.getText() for cctx in ectx.case_condition()]
-            entries.append({
-                "conds": conds,
-                "body": self.visit(ectx.statement_list())
-            })
-
-        return {
-            "stmt_type": "case",
-            "cond": self.visit(ctx.cond),
-            "entries": entries,
-            "else_body": self.visit(ctx.elselist) if ctx.elselist else []
-        }
-
-    def visitFor_statement(self, ctx: IEC61131Parser.For_statementContext) -> Dict[str, Any]:
-        return {
-            "stmt_type": "for",
-            "var": ctx.var.text,
-            "start": self.visit(ctx.begin),
-            "end": self.visit(ctx.endPosition),
-            "step": self.visit(ctx.by) if ctx.by else None,
-            "body": self.visit(ctx.statement_list())
-        }
-
-    def visitWhile_statement(self, ctx: IEC61131Parser.While_statementContext) -> Dict[str, Any]:
-        return {
-            "stmt_type": "while",
-            "cond": self.visit(ctx.expression()),
-            "body": self.visit(ctx.statement_list())
-        }
-
-    def visitInvocation_statement(self, ctx: IEC61131Parser.Invocation_statementContext) -> Dict[str, Any]:
-        return self.visit(ctx.invocation())
-
-
-    def visitParam_assignment(self, ctx: IEC61131Parser.Param_assignmentContext):
-        if ctx.v:
-            return self.visit(ctx.v)
-        if ctx.expression():
-            return self.visit(ctx.expression())
-        return None
-
-    # ==========================================
-    # 4. 表达式 (Expressions)
-    # ==========================================
-
-    def _make_binop(self, ctx) -> Dict[str, Any]:
-        """通用的二元操作符构造器"""
-        return {
-            "expr_type": "binop",
-            "op": ctx.op.text.upper(),
-            "left": self.visit(ctx.left),
-            "right": self.visit(ctx.right)
-        }
-
-    # ANTLR 会根据不同的运算优先级生成不同的 Context，这里统一走 _make_binop
-    def visitBinaryPowerExpr(self, ctx: IEC61131Parser.BinaryPowerExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryModDivExpr(self, ctx: IEC61131Parser.BinaryModDivExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryMultExpr(self, ctx: IEC61131Parser.BinaryMultExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryPlusMinusExpr(self, ctx: IEC61131Parser.BinaryPlusMinusExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryCmpExpr(self, ctx: IEC61131Parser.BinaryCmpExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryEqExpr(self, ctx: IEC61131Parser.BinaryEqExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryAndExpr(self, ctx: IEC61131Parser.BinaryAndExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryOrExpr(self, ctx: IEC61131Parser.BinaryOrExprContext):
-        return self._make_binop(ctx)
-
-    def visitBinaryXORExpr(self, ctx: IEC61131Parser.BinaryXORExprContext):
-        return self._make_binop(ctx)
-
-    def visitUnaryMinusExpr(self, ctx: IEC61131Parser.UnaryMinusExprContext):
-        return {
-            "expr_type": "unaryop",
-            "op": "-",
-            "operand": self.visit(ctx.sub)
-        }
-
-    def visitUnaryNegateExpr(self, ctx: IEC61131Parser.UnaryNegateExprContext):
-        return {
-            "expr_type": "unaryop",
-            "op": "NOT",
-            "operand": self.visit(ctx.sub)
-        }
-
-    def visitParenExpr(self, ctx: IEC61131Parser.ParenExprContext):
-        # 括号表达式直接提取内部的表达式即可
-        return self.visit(ctx.sub)
-
-    def visitPrimaryExpr(self, ctx: IEC61131Parser.PrimaryExprContext):
-        return self.visit(ctx.primary_expression())
-
-    def visitConstant(self, ctx: IEC61131Parser.ConstantContext) -> Dict[str, Any]:
-        return {
-            "expr_type": "literal",
-            "value": ctx.getText()
-        }
-
-    def visitVariable(self, ctx) -> Dict[str, Any]:
-        # 提取变量引用（支持数组下标和结构体成员的纯文本形式）
-        return {
-            "expr_type": "var",
-            "name": ctx.getText()
-        }
-
-
-    def visitRepeat_statement(self, ctx: IEC61131Parser.Repeat_statementContext) -> Dict[str, Any]:
-        return {
-            "stmt_type": "repeat",
-            "body": self.visit(ctx.statement_list()) if ctx.statement_list() else [],
-            "until_cond": self.visit(ctx.expression())
-        }
-
-    def visitReturn_statement(self, ctx: IEC61131Parser.Return_statementContext) -> Dict[str, Any]:
-        return {"stmt_type": "return"}
-
-    def visitExit_statement(self, ctx: IEC61131Parser.Exit_statementContext) -> Dict[str, Any]:
-        return {"stmt_type": "exit"}
-
-    def visitContinue_statement(self, ctx: IEC61131Parser.Continue_statementContext) -> Dict[str, Any]:
-        return {"stmt_type": "continue"}
