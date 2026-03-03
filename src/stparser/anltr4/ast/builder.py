@@ -17,26 +17,37 @@ class STAstBuilder(IEC61131ParserVisitor):
     # 🌟 核心防雷：万能文本提取器
     # ==========================================
     def safe_text(self, obj) -> str:
-        """安全提取文本，彻底解决 Token 和 Context 的 API 冲突"""
-        if obj is None:
-            return ""
-        # 1. 如果它是方法 (比如 ctx.identifier)，先调用它获取对象
-        if callable(obj):
-            try:
-                obj = obj()
-            except:
-                pass
+        """
+        终极防弹文本提取：自动处理属性、方法、Token、Context
+        """
+        if obj is None: return ""
 
-        if obj is None:
-            return ""
+        # 如果 obj 本身已经是字符串了（例如之前处理过的）
+        if isinstance(obj, str): return obj
 
-        # 2. 如果是 Rule Context，调用 getText()
-        if hasattr(obj, 'getText'):
-            return obj.getText()
+        try:
+            # 1. 如果是方法，尝试调用它获取节点
+            if callable(obj):
+                # 针对 ANTLR：如果它是 Token 节点，调用会失败，我们捕获它
+                temp = obj()
+                if temp is not None:
+                    obj = temp
 
-        # 3. 如果是 Lexer Token，直接读取 text
-        if hasattr(obj, 'text'):
-            return obj.text
+            # 2. 如果是 Context (有 getText 方法)
+            if hasattr(obj, 'getText'):
+                return obj.getText()
+
+            # 3. 如果是 Token (有 text 属性)
+            if hasattr(obj, 'text'):
+                return obj.text
+
+            # 4. 递归处理列表 (例如 identifier_list)
+            if isinstance(obj, list):
+                return "".join([self.safe_text(i) for i in obj])
+
+        except Exception as e:
+            # 这里的诊断能帮你定位是哪个 Token 出了问题
+            print(f"[AST诊断] safe_text 在处理 {type(obj)} 时报错: {e}")
 
         return str(obj)
 
@@ -58,59 +69,53 @@ class STAstBuilder(IEC61131ParserVisitor):
         return pous
 
     # ==========================================
-    # 🛡️ 终极防弹 Body 提取器
+    # 1. 顶层结构 (标准显式访问版)
     # ==========================================
-    def _extract_body(self, ctx) -> List[Dict]:
-        """
-        不管节点叫什么名字，只要它包含子节点，就递归向下挖掘 statement
-        """
-        if not ctx: return []
 
-        # 如果当前节点直接就是 statement_list，直接 visit
-        if "statement_list" in type(ctx).__name__.lower():
-            return self.visit(ctx)
-
-        # 否则，遍历所有子节点寻找代码块
-        for i in range(ctx.getChildCount()):
-            child = ctx.getChild(i)
-            # 寻找任何带有 'body', 'statement', 'instruction' 字样的节点
-            if any(k in type(child).__name__.lower() for k in ['body', 'stmt', 'list']):
-                res = self.visit(child)
-                if res: return res if isinstance(res, list) else [res]
-
-        return []
-
-    # ==========================================
-    # 1. 顶层结构 (Program, Function Block, Function)
-    # ==========================================
     def visitProgram_declaration(self, ctx: IEC61131Parser.Program_declarationContext) -> Dict[str, Any]:
-        return {
-            "unit_type": "PROGRAM",
-            "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            # 💡 绝对不要在这里写 ctx.body()，把整个 ctx 扔给提取器
-            "body": self._extract_body(ctx)
-        }
+        try:
+            # 使用 getattr 拿对象，不加括号调用！
+            name_node = getattr(ctx, 'identifier', None)
+            body_node = getattr(ctx, 'body', None)
 
-    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[
-        str, Any]:
-        return {
-            "unit_type": "FUNCTION_BLOCK",
-            "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            # 💡 同上
-            "body": self._extract_body(ctx)
-        }
+            return {
+                "unit_type": "PROGRAM",
+                "name": self.safe_text(name_node),
+                "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+                "body": self.visit(body_node()) if (body_node and callable(body_node)) else []
+            }
+        except Exception as e:
+            raise ValueError(f"[AST诊断] Program 解析崩溃: {str(e)}")
+
+    def visitFunction_block_declaration(self, ctx: IEC61131Parser.Function_block_declarationContext) -> Dict[str, Any]:
+        try:
+            name_node = getattr(ctx, 'identifier', None)
+            body_node = getattr(ctx, 'body', None)
+            return {
+                "unit_type": "FUNCTION_BLOCK",
+                "name": self.safe_text(name_node),
+                "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+                "body": self.visit(body_node()) if (body_node and callable(body_node)) else []
+            }
+        except Exception as e:
+            raise ValueError(f"[AST诊断] FB 解析崩溃: {str(e)}")
 
     def visitFunction_declaration(self, ctx: IEC61131Parser.Function_declarationContext) -> Dict[str, Any]:
-        return {
-            "unit_type": "FUNCTION",
-            "name": self.safe_text(getattr(ctx, 'identifier', None)) or "Unnamed",
-            "return_type": self.safe_text(getattr(ctx, 'type_declaration', None)) or "UNKNOWN",
-            "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
-            # 💡 同上，彻底断绝属性报错的可能
-            "body": self._extract_body(ctx)
-        }
+        try:
+            name_node = getattr(ctx, 'identifier', None)
+            type_node = getattr(ctx, 'elementary_type_name', None) or getattr(ctx, 'type_declaration', None)
+            body_node = getattr(ctx, 'funcBody', None)
+
+            return {
+                "unit_type": "FUNCTION",
+                "name": self.safe_text(name_node),
+                "return_type": self.safe_text(type_node) or "UNKNOWN",
+                "var_blocks": self.visit(ctx.var_decls()) if ctx.var_decls() else [],
+                "body": self.visit(body_node()) if (body_node and callable(body_node)) else []
+            }
+        except Exception as e:
+            raise ValueError(f"[AST诊断] Function 解析崩溃: {str(e)}")
+
 
     # 函数/功能块调用提取 (彻底解决 Symbolic_variableContext 和 NameContext 报错)
     def visitInvocation(self, ctx: IEC61131Parser.InvocationContext) -> Dict[str, Any]:
