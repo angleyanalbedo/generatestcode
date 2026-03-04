@@ -17,97 +17,110 @@ class FbdToLdConverter:
         return str(self.ld_id_counter)
 
     def convert(self, fbd_xml_string: str) -> str:
-        # ElementTree 处理带 xmlns 的 XML 时，必须使用命名空间字典
         ns_map = {'ns': NS, 'xsi': XSI}
-
         root = ET.fromstring(fbd_xml_string)
 
-        # 1. 修改容器类型 FBD -> LD
+        # 修改容器类型 FBD -> LD
         for body in root.findall(".//ns:BodyContent", ns_map):
             if body.attrib.get(f"{{{XSI}}}type") == "FBD":
                 body.set(f"{{{XSI}}}type", "LD")
 
-        # 2. 遍历并处理所有 Network
+        # 遍历并处理所有 Network
         for network in root.findall(".//ns:Network", ns_map):
             self._transform_network(network, ns_map)
 
-        # 补回 XML 声明头并输出
+            # 🌟 修复点：将 FBD 的 Network 标签重命名为 LD 的 Rung 标签
+            network.tag = f"{{{NS}}}Rung"
+
         return ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
     def _transform_network(self, network: ET.Element, ns_map: dict):
-        # --- A. 准备左/右电源线 ---
+        # 1. 容器重命名：根据 XSD 第 107 行，LadderRung 在 LD 中名为 Rung
+        network.tag = f"{{{NS}}}Rung"
+
         left_rail_id = self._get_id()
+        left_rail_out_id = self._get_id()
         right_rail_id = self._get_id()
 
-        left_rail = ET.Element(f"{{{NS}}}LeftPowerRail", localId=left_rail_id)
-        ET.SubElement(left_rail, f"{{{NS}}}Position", x="10", y="50")
-        ET.SubElement(left_rail, f"{{{NS}}}ConnectionPointOut", formalParameter="")
+        # 2. 🌟 生成左电源线：必须继承 LdObjectBase (XSD 行 136)
+        left_rail = ET.Element(f"{{{NS}}}LdObject", globalId=f"OBJ_{left_rail_id}")
+        left_rail.set(f"{{{XSI}}}type", "LeftPowerRail")
+        ET.SubElement(left_rail, f"{{{NS}}}RelPosition", x="10", y="50")
 
-        right_rail = ET.Element(f"{{{NS}}}RightPowerRail", localId=right_rail_id)
-        ET.SubElement(right_rail, f"{{{NS}}}Position", x="1000", y="50")
+        cpo_left = ET.SubElement(left_rail, f"{{{NS}}}ConnectionPointOut", connectionPointOutId=left_rail_out_id)
+        ET.SubElement(cpo_left, f"{{{NS}}}RelPosition", x="10", y="20")
+
+        # 3. 🌟 生成右电源线：(XSD 行 136-137)
+        right_rail = ET.Element(f"{{{NS}}}LdObject", globalId=f"OBJ_{right_rail_id}")
+        right_rail.set(f"{{{XSI}}}type", "RightPowerRail")
+        ET.SubElement(right_rail, f"{{{NS}}}RelPosition", x="1000", y="50")
+
         right_cpi = ET.SubElement(right_rail, f"{{{NS}}}ConnectionPointIn")
+        ET.SubElement(right_cpi, f"{{{NS}}}RelPosition", x="0", y="20")
 
-        coils_out_ids = []  # 记录需要连到右电源线的线圈 ID
+        coils_out_ids = []
 
-        # --- B. 遍历并替换图元 ---
+        # 4. 遍历处理原本的 FbdObject
         for obj in network.findall(".//ns:FbdObject", ns_map):
             xsi_type = obj.attrib.get(f"{{{XSI}}}type")
 
             if xsi_type == "DataSource":
-                # 1. DataSource -> Contact (触点)
-                obj.tag = f"{{{NS}}}Contact"
-                obj.set("variable", obj.get("identifier", "VAR"))
+                # 🌟 XSD 行 139-140：Contact 必须叫 LdObject，且属性名为 operand
+                obj.tag = f"{{{NS}}}LdObject"
+                obj.set(f"{{{XSI}}}type", "Contact")
+                obj.set("operand", obj.get("identifier", "VAR"))
                 obj.attrib.pop("identifier", None)
-                obj.attrib.pop(f"{{{XSI}}}type", None)
 
-                # FBD 的 DataSource 只有输出，LD 的 Contact 需要输入端连到左电源线
+                # 严格遵守顺序：RelPosition -> ConnectionPointIn -> ConnectionPointOut
                 cpi = ET.Element(f"{{{NS}}}ConnectionPointIn")
                 ET.SubElement(cpi, f"{{{NS}}}RelPosition", x="0", y="10")
-                ET.SubElement(cpi, f"{{{NS}}}Connection", refLocalId=left_rail_id)  # 默认直连左电源
-                obj.insert(0, cpi)  # 插入到最前面
+                ET.SubElement(cpi, f"{{{NS}}}Connection", refConnectionPointOutId=left_rail_out_id)
+
+                # FBD 的 DataSource 已经有 RelPosition(索引0) 和 ConnectionPointOut(索引1)
+                # 插入到索引 1，确保符合 XSD 的顺序要求
+                rel_pos = obj.find(f"{{{NS}}}RelPosition")
+                insert_idx = list(obj).index(rel_pos) + 1 if rel_pos is not None else 0
+                obj.insert(insert_idx, cpi)
 
             elif xsi_type == "DataSink":
-                # 2. DataSink -> Coil (线圈)
-                obj.tag = f"{{{NS}}}Coil"
-                obj.set("variable", obj.get("identifier", "VAR"))
+                # 🌟 XSD 行 137-139：Coil 的属性名也是 operand
+                obj.tag = f"{{{NS}}}LdObject"
+                obj.set(f"{{{XSI}}}type", "Coil")
+                obj.set("operand", obj.get("identifier", "VAR"))
                 obj.attrib.pop("identifier", None)
-                obj.attrib.pop(f"{{{XSI}}}type", None)
 
-                # FBD 的 DataSink 只有输入，LD 的 Coil 需要输出端连到右电源线
+                # Coil 需要在末尾追加 ConnectionPointOut
                 cpo_id = self._get_id()
-                cpo = ET.SubElement(obj, f"{{{NS}}}ConnectionPointOut", localId=cpo_id)
+                cpo = ET.SubElement(obj, f"{{{NS}}}ConnectionPointOut", connectionPointOutId=cpo_id)
                 ET.SubElement(cpo, f"{{{NS}}}RelPosition", x="20", y="10")
                 coils_out_ids.append(cpo_id)
 
             elif xsi_type == "Block":
-                # 3. 功能块注入 EN/ENO 引脚
-                obj.tag = f"{{{NS}}}Block"
-                obj.attrib.pop(f"{{{XSI}}}type", None)
-
-                # 注入 EN (使能输入)，默认连到左电源线
+                # 🌟 XSD 行 107：LadderRung 允许内部直接存在 FbdObject，所以 Block 不需要改名
                 in_vars = obj.find("ns:InputVariables", ns_map)
                 if in_vars is None:
                     in_vars = ET.SubElement(obj, f"{{{NS}}}InputVariables")
 
-                en_var = ET.Element(f"{{{NS}}}Variable", formalParameter="EN")
+                # XSD 行 125/132：引脚必须叫 InputVariable / OutputVariable，属性叫 parameterName
+                en_var = ET.Element(f"{{{NS}}}InputVariable", parameterName="EN")
                 en_cpi = ET.SubElement(en_var, f"{{{NS}}}ConnectionPointIn")
-                ET.SubElement(en_cpi, f"{{{NS}}}Connection", refLocalId=left_rail_id)
+                ET.SubElement(en_cpi, f"{{{NS}}}RelPosition", x="0", y="0")
+                ET.SubElement(en_cpi, f"{{{NS}}}Connection", refConnectionPointOutId=left_rail_out_id)
                 in_vars.insert(0, en_var)
 
-                # 注入 ENO (使能输出)
                 out_vars = obj.find("ns:OutputVariables", ns_map)
                 if out_vars is None:
                     out_vars = ET.SubElement(obj, f"{{{NS}}}OutputVariables")
 
-                eno_var = ET.Element(f"{{{NS}}}Variable", formalParameter="ENO")
-                ET.SubElement(eno_var, f"{{{NS}}}ConnectionPointOut", localId=self._get_id())
+                eno_var = ET.Element(f"{{{NS}}}OutputVariable", parameterName="ENO")
+                eno_cpo = ET.SubElement(eno_var, f"{{{NS}}}ConnectionPointOut", connectionPointOutId=self._get_id())
+                ET.SubElement(eno_cpo, f"{{{NS}}}RelPosition", x="0", y="0")
                 out_vars.insert(0, eno_var)
 
-        # --- C. 缝合网络尾部 ---
-        # 将所有线圈的输出引脚，连接到右电源线
+        # 5. 所有线圈连接到右电源线
         for cpo_id in coils_out_ids:
-            ET.SubElement(right_cpi, f"{{{NS}}}Connection", refLocalId=cpo_id)
+            ET.SubElement(right_cpi, f"{{{NS}}}Connection", refConnectionPointOutId=cpo_id)
 
-        # 把生成的电源线注入到 Network 头尾
+        # 6. 梯级头尾插入电源线
         network.insert(0, left_rail)
         network.append(right_rail)
