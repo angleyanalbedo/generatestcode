@@ -104,5 +104,20 @@ LD_XML_TEMPLATES = {
                   </OutputVariable>
 {% endfor %}
                 </OutputVariables>
+              </FbdObject>""",
+# 🌟 核心差异 5：用于给功能块传递非布尔值的数据源和数据池
+    "data_source": """              <FbdObject xsi:type="DataSource" globalId="OBJ_{{ id }}" identifier="{{ name }}">
+                <RelPosition x="{{ x }}" y="{{ y }}" />
+                <ConnectionPointOut connectionPointOutId="{{ out_id }}">
+                  <RelPosition x="20" y="10" />
+                </ConnectionPointOut>
+              </FbdObject>""",
+
+    "data_sink": """              <FbdObject xsi:type="DataSink" globalId="OBJ_{{ id }}" identifier="{{ name }}">
+                <RelPosition x="{{ x }}" y="{{ y }}" />
+                <ConnectionPointIn>
+                  <RelPosition x="0" y="10" />
+                  <Connection refConnectionPointOutId="{{ in_connected_out_id }}" />
+                </ConnectionPointIn>
               </FbdObject>"""
 }
