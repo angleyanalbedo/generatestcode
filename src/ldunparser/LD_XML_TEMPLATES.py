@@ -69,39 +69,40 @@ LD_XML_TEMPLATES = {
                   <RelPosition x="20" y="20" />
                 </ConnectionPointOut>
               </LdObject>""",
-    "block": """              <LdObject xsi:type="Block" typeName="{{ type_name }}" instanceName="{{ instance_name }}" globalId="OBJ_{{ id }}">
-                    <RelPosition x="{{ x }}" y="{{ y }}" />
-                    <InputVariables>
-                      <InputVariable parameterName="EN">
-                        <ConnectionPointIn>
-                          <RelPosition x="0" y="0" />
-                          <Connection refConnectionPointOutId="{{ en_connected_out_id }}" />
-                        </ConnectionPointIn>
-                      </InputVariable>
-    {% for pin in inputs %}
-                      <InputVariable parameterName="{{ pin.name }}">
-                        <ConnectionPointIn>
-                          <RelPosition x="0" y="{{ pin.y }}" />
-    {% if pin.ref_out_id %}
-                          <Connection refConnectionPointOutId="{{ pin.ref_out_id }}" />
-    {% endif %}
-                        </ConnectionPointIn>
-                      </InputVariable>
-    {% endfor %}
-                    </InputVariables>
-                    <OutputVariables>
-                      <OutputVariable parameterName="ENO">
-                        <ConnectionPointOut connectionPointOutId="{{ eno_out_id }}">
-                          <RelPosition x="0" y="0" />
-                        </ConnectionPointOut>
-                      </OutputVariable>
-    {% for pin in outputs %}
-                      <OutputVariable parameterName="{{ pin.name }}">
-                        <ConnectionPointOut connectionPointOutId="{{ pin.out_id }}">
-                          <RelPosition x="0" y="{{ pin.y }}" />
-                        </ConnectionPointOut>
-                      </OutputVariable>
-    {% endfor %}
-                    </OutputVariables>
-                  </LdObject>"""
+    # 🌟 修复后的 block 模板：标签必须是 FbdObject
+    "block": """              <FbdObject xsi:type="Block" typeName="{{ type_name }}" instanceName="{{ instance_name }}" globalId="OBJ_{{ id }}">
+                <RelPosition x="{{ x }}" y="{{ y }}" />
+                <InputVariables>
+                  <InputVariable parameterName="EN">
+                    <ConnectionPointIn>
+                      <RelPosition x="0" y="0" />
+                      <Connection refConnectionPointOutId="{{ en_connected_out_id }}" />
+                    </ConnectionPointIn>
+                  </InputVariable>
+{% for pin in inputs %}
+                  <InputVariable parameterName="{{ pin.name }}">
+                    <ConnectionPointIn>
+                      <RelPosition x="0" y="{{ pin.y }}" />
+{% if pin.ref_out_id %}
+                      <Connection refConnectionPointOutId="{{ pin.ref_out_id }}" />
+{% endif %}
+                    </ConnectionPointIn>
+                  </InputVariable>
+{% endfor %}
+                </InputVariables>
+                <OutputVariables>
+                  <OutputVariable parameterName="ENO">
+                    <ConnectionPointOut connectionPointOutId="{{ eno_out_id }}">
+                      <RelPosition x="0" y="0" />
+                    </ConnectionPointOut>
+                  </OutputVariable>
+{% for pin in outputs %}
+                  <OutputVariable parameterName="{{ pin.name }}">
+                    <ConnectionPointOut connectionPointOutId="{{ pin.out_id }}">
+                      <RelPosition x="0" y="{{ pin.y }}" />
+                    </ConnectionPointOut>
+                  </OutputVariable>
+{% endfor %}
+                </OutputVariables>
+              </FbdObject>"""
 }
