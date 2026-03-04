@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from tqdm import tqdm
@@ -145,6 +146,17 @@ def test_st_to_ld_pipeline(
             print(f"... 以及另外 {len(failure_details) - 10} 个错误，请检查日志。")
 
     print("=" * 60)
+    # ==========================================
+    # 🌟 修复谎言：真正保存日志文件！
+    # ==========================================
+    log_file_path = output_dir / "failure_details_log.json"
+    try:
+        with open(log_file_path, "w", encoding="utf-8") as log_file:
+            # 将错误列表格式化保存为 JSON，方便阅读和后续分析
+            json.dump(failure_details, log_file, indent=4, ensure_ascii=False)
+        print(f"\n📂 [真·日志] 完整的 {len(failure_details)} 条错误记录已保存至: \n   👉 {log_file_path.absolute()}")
+    except Exception as e:
+        print(f"\n❌ 警告: 尝试保存日志文件时失败: {e}")
 
 
 if __name__ == "__main__":
